@@ -1,0 +1,179 @@
+@model InventoryMapper.Core.Entities.Asset
+@{
+    ViewData["Title"] = Model.Hostname;
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a asp-controller="Assets" asp-action="Index">Assets</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>@Model.Hostname</span>
+            </div>
+            <h1 class="page-title" style="display: flex; align-items: center; gap: 10px;">
+                <span class="dot dot-@Model.OnlineState.ToString().ToLower()" style="width: 10px; height: 10px;"></span>
+                @Model.Hostname
+            </h1>
+            <p class="page-subtitle">@Model.AssetType — @(Model.Manufacturer ?? "") @(Model.Model ?? "")</p>
+        </div>
+        <div class="flex gap-2">
+            <a asp-controller="Assets" asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-secondary">
+                <i class="fas fa-edit"></i> Edit
+            </a>
+            @if (Model.BlueprintId.HasValue && Model.Blueprint != null)
+            {
+                <a asp-controller="Blueprints" asp-action="Canvas" asp-route-id="@Model.BlueprintId" class="btn btn-secondary">
+                    <i class="fas fa-map"></i> View on Blueprint
+                </a>
+            }
+            <form asp-controller="Assets" asp-action="Delete" asp-route-id="@Model.Id"
+                  method="post" onsubmit="return confirm('Delete @Model.Hostname?')">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-danger"><i class="fas fa-trash"></i> Delete</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Active alerts banner -->
+    @foreach (var alert in Model.Alerts.Where(a => !a.IsResolved))
+    {
+        <div class="alert alert-@(alert.Severity == Core.Enums.AlertSeverity.Critical ? "error" : "warning")" style="margin-bottom: 12px;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>@alert.Title</strong> — @alert.Message
+        </div>
+    }
+
+    <div class="grid-2" style="gap: 16px;">
+        <!-- Identity -->
+        <div class="card">
+            <div class="card-header"><span class="card-title"><i class="fas fa-id-card"></i> Identity</span></div>
+            <div class="card-body">
+                <div class="detail-row"><div class="detail-label">Hostname</div><div class="detail-value fw-600">@Model.Hostname</div></div>
+                <div class="detail-row"><div class="detail-label">IP Address</div><div class="detail-value">@(Model.IpAddress ?? "—")</div></div>
+                <div class="detail-row"><div class="detail-label">MAC Address</div><div class="detail-value" style="font-family: monospace;">@(Model.MacAddress ?? "—")</div></div>
+                <div class="detail-row"><div class="detail-label">Serial #</div><div class="detail-value">@(Model.SerialNumber ?? "—")</div></div>
+                <div class="detail-row"><div class="detail-label">Asset Type</div><div class="detail-value">@Model.AssetType</div></div>
+                <div class="detail-row"><div class="detail-label">Manufacturer</div><div class="detail-value">@(Model.Manufacturer ?? "—")</div></div>
+                <div class="detail-row"><div class="detail-label">Model</div><div class="detail-value">@(Model.Model ?? "—")</div></div>
+            </div>
+        </div>
+
+        <!-- System -->
+        <div class="card">
+            <div class="card-header"><span class="card-title"><i class="fas fa-cog"></i> System</span></div>
+            <div class="card-body">
+                <div class="detail-row"><div class="detail-label">OS</div><div class="detail-value">@(Model.OperatingSystem ?? "—")</div></div>
+                <div class="detail-row"><div class="detail-label">OS Version</div><div class="detail-value">@(Model.OsVersion ?? "—")</div></div>
+                <div class="detail-row">
+                    <div class="detail-label">Status</div>
+                    <div class="detail-value"><span class="badge badge-@Model.Status.ToString().ToLower()">@Model.Status</span></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Online State</div>
+                    <div class="detail-value">
+                        <span class="badge badge-@Model.OnlineState.ToString().ToLower()">
+                            <span class="dot dot-@Model.OnlineState.ToString().ToLower()"></span>
+                            @Model.OnlineState
+                        </span>
+                    </div>
+                </div>
+                <div class="detail-row"><div class="detail-label">Last Check-In</div><div class="detail-value">@(Model.LastCheckIn?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Never")</div></div>
+                <div class="detail-row"><div class="detail-label">Monitoring</div><div class="detail-value">@Model.MonitoringMethod @(Model.IsMonitored ? "" : "(disabled)")</div></div>
+                <div class="detail-row"><div class="detail-label">Last Ping</div><div class="detail-value text-muted">@(Model.LastPingAt?.ToLocalTime().ToString("HH:mm:ss") ?? "Never")</div></div>
+            </div>
+        </div>
+
+        <!-- Organization -->
+        <div class="card">
+            <div class="card-header"><span class="card-title"><i class="fas fa-sitemap"></i> Organization</span></div>
+            <div class="card-body">
+                <div class="detail-row"><div class="detail-label">Assigned User</div><div class="detail-value">@(Model.AssignedUser ?? "—")</div></div>
+                <div class="detail-row"><div class="detail-label">Department</div><div class="detail-value">@(Model.Department ?? "—")</div></div>
+                <div class="detail-row"><div class="detail-label">OU</div><div class="detail-value" style="font-size: 12px; font-family: monospace; word-break: break-all;">@(Model.OrganizationalUnit ?? "—")</div></div>
+                <div class="detail-row">
+                    <div class="detail-label">Location</div>
+                    <div class="detail-value">
+                        @if (Model.Location != null)
+                        { <a asp-controller="Locations" asp-action="Index">@Model.Location.Name</a> }
+                        else
+                        { <span class="text-muted">—</span> }
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Blueprint</div>
+                    <div class="detail-value">
+                        @if (Model.Blueprint != null)
+                        { <a asp-controller="Blueprints" asp-action="Canvas" asp-route-id="@Model.Blueprint.Id">@Model.Blueprint.Name</a> }
+                        else
+                        { <span class="text-muted">Not placed</span> }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tags & Notes -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-tags"></i> Tags &amp; Notes</span>
+            </div>
+            <div class="card-body">
+                @if (Model.Tags.Any())
+                {
+                    <div class="tag-list" style="margin-bottom: 12px;">
+                        @foreach (var tag in Model.Tags)
+                        {
+                            <span class="tag" style="background: @HexToRgba(tag.Color ?? "#388BFD", 0.15); color: @(tag.Color ?? "#388BFD"); border-color: @HexToRgba(tag.Color ?? "#388BFD", 0.3);">
+                                @tag.Key@(tag.Value != null ? $":{tag.Value}" : "")
+                            </span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-muted text-sm" style="margin-bottom: 12px;">No tags</div>
+                }
+                @if (!string.IsNullOrEmpty(Model.Notes))
+                {
+                    <div style="background: var(--bg-tertiary); border-radius: 6px; padding: 10px; font-size: 13px;">@Model.Notes</div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Section -->
+    @if (Model.Agent != null)
+    {
+        <div class="card mt-4">
+            <div class="card-header"><span class="card-title"><i class="fas fa-robot"></i> Agent Registration</span></div>
+            <div class="card-body grid-2">
+                <div class="detail-row"><div class="detail-label">Agent Key</div><div class="detail-value" style="font-family: monospace; font-size: 11px;">@Model.Agent.AgentKey</div></div>
+                <div class="detail-row"><div class="detail-label">Version</div><div class="detail-value">v@Model.Agent.AgentVersion</div></div>
+                <div class="detail-row"><div class="detail-label">Last Heartbeat</div><div class="detail-value">@Model.Agent.LastHeartbeat.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</div></div>
+                <div class="detail-row">
+                    <div class="detail-label">Handshake</div>
+                    <div class="detail-value">
+                        <span class="badge @(Model.Agent.IsHandshakeValid ? "badge-online" : "badge-warning")">
+                            @(Model.Agent.IsHandshakeValid ? "Valid" : "Invalid / Expired")
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@functions {
+    string HexToRgba(string hex, double alpha)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length == 6)
+        {
+            int r = Convert.ToInt32(hex[..2], 16);
+            int g = Convert.ToInt32(hex[2..4], 16);
+            int b = Convert.ToInt32(hex[4..6], 16);
+            return $"rgba({r},{g},{b},{alpha})";
+        }
+        return hex;
+    }
+}

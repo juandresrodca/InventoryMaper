@@ -1,0 +1,152 @@
+@model IEnumerable<InventoryMapper.Core.Entities.ImportBatch>
+@{
+    ViewData["Title"] = "Bulk Import";
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Bulk Asset Import</h1>
+            <p class="page-subtitle">Import assets from Excel or CSV files</p>
+        </div>
+    </div>
+
+    <div class="grid-2" style="gap: 16px; margin-bottom: 24px;">
+
+        <!-- Upload Form -->
+        <div class="card">
+            <div class="card-header"><span class="card-title"><i class="fas fa-file-upload"></i> Upload File</span></div>
+            <div class="card-body">
+                <form asp-controller="Import" asp-action="Upload" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+
+                    <div class="form-group">
+                        <label class="form-label">Asset Type</label>
+                        <select name="assetType" class="form-control">
+                            <option value="">Auto-detect from file</option>
+                            <option value="PhysicalDevice">Physical Devices</option>
+                            <option value="Server">Servers</option>
+                            <option value="VirtualMachine">Virtual Machines</option>
+                            <option value="NetworkSwitch">Network Devices</option>
+                            <option value="Printer">Printers</option>
+                            <option value="IoTDevice">IoT Devices</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">File (.xlsx or .csv)</label>
+                        <div id="importDropZone" style="border: 2px dashed var(--border-color); border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-file-excel" style="font-size: 28px; color: var(--accent-green); margin-bottom: 8px;"></i>
+                            <div style="font-weight: 500; margin-bottom: 4px;">Drop file here or click to browse</div>
+                            <div class="text-sm text-muted">XLSX, CSV — max 10MB</div>
+                            <input type="file" name="file" id="importFile" accept=".xlsx,.csv" style="display:none;" required />
+                        </div>
+                        <div id="importFileInfo" style="margin-top: 8px; display: none;" class="alert alert-info">
+                            <i class="fas fa-file"></i> <span id="importFileName"></span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-upload"></i> Start Import
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Template Downloads -->
+        <div class="card">
+            <div class="card-header"><span class="card-title"><i class="fas fa-download"></i> Import Templates</span></div>
+            <div class="card-body">
+                <p class="text-sm text-muted" style="margin-bottom: 16px;">
+                    Download a template to ensure your import file has the correct column headers.
+                </p>
+                @foreach (var (label, type, icon) in new[] {
+                    ("Physical Devices", "PhysicalDevice", "💻"),
+                    ("Servers", "Server", "🖥️"),
+                    ("Virtual Machines", "VirtualMachine", "⚙️"),
+                    ("Network Devices", "NetworkSwitch", "🔀"),
+                    ("Printers", "Printer", "🖨️")
+                })
+                {
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
+                        <div class="flex-center gap-2">
+                            <span>@icon</span>
+                            <span class="text-sm">@label</span>
+                        </div>
+                        <a asp-controller="Import" asp-action="Template" asp-route-assetType="@type"
+                           class="btn btn-secondary btn-sm">
+                            <i class="fas fa-download"></i> XLSX
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Import History -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Import History</span>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Status</th>
+                    <th>Total</th>
+                    <th>Added</th>
+                    <th>Updated</th>
+                    <th>Errors</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var batch in Model)
+                {
+                    <tr>
+                        <td style="font-weight: 500;">@(batch.OriginalFileName ?? batch.FileName)</td>
+                        <td>
+                            <span class="badge badge-@(batch.Status.ToString().ToLower() == "completed" ? "active" : batch.Status.ToString().ToLower() == "completedwitherrors" ? "warning" : batch.Status.ToString().ToLower() == "failed" ? "offline" : "pending")">
+                                @batch.Status
+                            </span>
+                        </td>
+                        <td>@batch.TotalRows</td>
+                        <td style="color: var(--accent-green);">@batch.SuccessRows</td>
+                        <td style="color: var(--accent-blue);">@batch.DuplicateRows</td>
+                        <td style="color: @(batch.ErrorRows > 0 ? "var(--accent-red)" : "var(--text-muted)");">@batch.ErrorRows</td>
+                        <td class="text-sm text-muted">@batch.CreatedAt.ToLocalTime().ToString("MMM d, HH:mm")</td>
+                        <td>
+                            <a asp-controller="Import" asp-action="Report" asp-route-id="@batch.Id"
+                               class="btn btn-secondary btn-sm">
+                                <i class="fas fa-chart-bar"></i> Report
+                            </a>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr><td colspan="8" class="text-center text-muted" style="padding: 24px;">No imports yet</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const zone = document.getElementById('importDropZone');
+const input = document.getElementById('importFile');
+zone.addEventListener('click', () => input.click());
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = 'var(--accent-blue)'; });
+zone.addEventListener('dragleave', () => { zone.style.borderColor = 'var(--border-color)'; });
+zone.addEventListener('drop', e => { e.preventDefault(); zone.style.borderColor = 'var(--border-color)'; if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
+input.addEventListener('change', e => { if (e.target.files[0]) setFile(e.target.files[0]); });
+
+function setFile(file) {
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    document.getElementById('importFileName').textContent = file.name;
+    document.getElementById('importFileInfo').style.display = 'flex';
+}
+</script>
+}

@@ -1,0 +1,75 @@
+@model IEnumerable<InventoryMapper.Core.Entities.Blueprint>
+@{
+    ViewData["Title"] = "Blueprints";
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Infrastructure Blueprints</h1>
+            <p class="page-subtitle">Floor plans, datacenter maps &amp; virtual space layouts</p>
+        </div>
+        <a asp-controller="Blueprints" asp-action="Create" class="btn btn-primary">
+            <i class="fas fa-upload"></i> Upload Blueprint
+        </a>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="card">
+            <div class="empty-state" style="padding: 64px 24px;">
+                <div class="empty-icon"><i class="fas fa-map"></i></div>
+                <div class="empty-title">No Blueprints Yet</div>
+                <div class="text-sm" style="margin-bottom: 16px;">Upload a floor plan or datacenter layout to start placing assets</div>
+                <a asp-controller="Blueprints" asp-action="Create" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Upload First Blueprint
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="grid-3" style="gap: 16px;">
+            @foreach (var bp in Model)
+            {
+                <div class="card" style="cursor: pointer; transition: transform 0.2s, border-color 0.2s;"
+                     onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent-blue)'"
+                     onmouseout="this.style.transform='';this.style.borderColor='var(--border-color)'">
+                    <div style="height: 160px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border-color); overflow: hidden; position: relative;">
+                        @if (bp.MimeType?.StartsWith("image/") == true)
+                        {
+                            <img src="@bp.FileStoragePath" alt="@bp.Name" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.7;" />
+                        }
+                        else
+                        {
+                            <div style="text-align: center; color: var(--text-muted);">
+                                <i class="fas fa-file-pdf" style="font-size: 40px;"></i>
+                                <div class="text-sm" style="margin-top: 8px;">PDF Blueprint</div>
+                            </div>
+                        }
+                        <div style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: white;">
+                            @bp.PlacedAssets.Count asset(s) placed
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div style="font-weight: 600; margin-bottom: 4px;">@bp.Name</div>
+                        <div class="text-sm text-muted" style="margin-bottom: 12px;">
+                            @(bp.Location?.Name ?? "No location") · @(bp.FileSizeBytes / 1024) KB
+                        </div>
+                        <div class="flex gap-2">
+                            <a asp-controller="Blueprints" asp-action="Canvas" asp-route-id="@bp.Id"
+                               class="btn btn-primary btn-sm" style="flex: 1; justify-content: center;">
+                                <i class="fas fa-map"></i> Open Canvas
+                            </a>
+                            <form asp-controller="Blueprints" asp-action="Delete" asp-route-id="@bp.Id"
+                                  method="post" onsubmit="return confirm('Delete @bp.Name?')">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-trash"></i></button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>

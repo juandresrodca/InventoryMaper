@@ -1,0 +1,79 @@
+@model IEnumerable<InventoryMapper.Core.Entities.AlertNotification>
+@{
+    ViewData["Title"] = "Active Alerts";
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a asp-controller="Dashboard" asp-action="Index">Dashboard</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>Alerts</span>
+            </div>
+            <h1 class="page-title">Active Alerts</h1>
+            <p class="page-subtitle">@Model.Count() unresolved alert(s)</p>
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Type</th>
+                    <th>Title</th>
+                    <th>Asset</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var alert in Model)
+                {
+                    <tr>
+                        <td>
+                            <span class="badge badge-@alert.Severity.ToString().ToLower()">
+                                @alert.Severity
+                            </span>
+                        </td>
+                        <td class="text-sm text-muted">@alert.AlertType</td>
+                        <td>
+                            <div style="font-weight: 500;">@alert.Title</div>
+                            <div class="text-sm text-muted">@alert.Message</div>
+                        </td>
+                        <td>
+                            @if (alert.Asset != null)
+                            {
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@alert.Asset.Id">@alert.Asset.Hostname</a>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-sm text-muted">@alert.CreatedAt.ToLocalTime().ToString("MMM d, HH:mm")</td>
+                        <td>
+                            <form asp-controller="Dashboard" asp-action="ResolveAlert" asp-route-id="@alert.Id" method="post" style="display: inline;">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-success btn-sm">Resolve</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr>
+                        <td colspan="6">
+                            <div class="empty-state">
+                                <div class="empty-icon"><i class="fas fa-check-circle" style="color: var(--accent-green);"></i></div>
+                                <div class="empty-title">No Active Alerts</div>
+                                <div class="text-sm">All systems are nominal</div>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

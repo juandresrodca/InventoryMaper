@@ -1,0 +1,130 @@
+@model InventoryMapper.Core.DTOs.UpdateAssetDto
+@{
+    ViewData["Title"] = "Edit Asset";
+    var assetId = ViewBag.AssetId as Guid? ?? Guid.Empty;
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a asp-controller="Assets" asp-action="Index">Assets</a>
+                <span class="breadcrumb-sep">/</span>
+                <a asp-controller="Assets" asp-action="Details" asp-route-id="@assetId">@Model.Hostname</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>Edit</span>
+            </div>
+            <h1 class="page-title">Edit: @Model.Hostname</h1>
+        </div>
+    </div>
+
+    <form asp-controller="Assets" asp-action="Edit" asp-route-id="@assetId" method="post" style="max-width: 900px;">
+        @Html.AntiForgeryToken()
+
+        <div class="card" style="margin-bottom: 16px;">
+            <div class="card-header"><span class="card-title">Identity</span></div>
+            <div class="card-body">
+                <div class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Hostname *</label>
+                        <input asp-for="Hostname" class="form-control" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">IP Address</label>
+                        <input asp-for="IpAddress" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">MAC Address</label>
+                        <input asp-for="MacAddress" class="form-control" />
+                    </div>
+                </div>
+                <div class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Serial Number</label>
+                        <input asp-for="SerialNumber" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Asset Type</label>
+                        <select asp-for="AssetType" class="form-control">
+                            @foreach (var t in (ViewBag.AssetTypes as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)!)
+                            { <option value="@t.Value">@t.Text</option> }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select asp-for="Status" class="form-control">
+                            @foreach (var s in (ViewBag.Statuses as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)!)
+                            { <option value="@s.Value">@s.Text</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Manufacturer</label>
+                        <input asp-for="Manufacturer" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Model</label>
+                        <input asp-for="Model" class="form-control" />
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Operating System</label>
+                        <input asp-for="OperatingSystem" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">OS Version</label>
+                        <input asp-for="OsVersion" class="form-control" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 16px;">
+            <div class="card-header"><span class="card-title">Organization</span></div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Assigned User</label>
+                        <input asp-for="AssignedUser" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Department</label>
+                        <input asp-for="Department" class="form-control" />
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Organizational Unit</label>
+                        <input asp-for="OrganizationalUnit" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Location</label>
+                        <select asp-for="LocationId" class="form-control">
+                            <option value="">— Select Location —</option>
+                            @foreach (var item in (ViewBag.Locations as Microsoft.AspNetCore.Mvc.Rendering.SelectList)!)
+                            { <option value="@item.Value">@item.Text</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Monitoring Method</label>
+                    <select asp-for="MonitoringMethod" class="form-control">
+                        @foreach (var m in (ViewBag.MonitoringMethods as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)!)
+                        { <option value="@m.Value">@m.Text</option> }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea asp-for="Notes" class="form-control" rows="3"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Changes</button>
+            <a asp-controller="Assets" asp-action="Details" asp-route-id="@assetId" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>

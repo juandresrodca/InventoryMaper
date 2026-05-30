@@ -1,0 +1,113 @@
+@model InventoryMapper.Core.DTOs.CreateBlueprintDto
+@{
+    ViewData["Title"] = "Upload Blueprint";
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a asp-controller="Blueprints" asp-action="Index">Blueprints</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>Upload</span>
+            </div>
+            <h1 class="page-title">Upload Blueprint</h1>
+        </div>
+    </div>
+
+    <form asp-controller="Blueprints" asp-action="Create" method="post"
+          enctype="multipart/form-data" style="max-width: 700px;">
+        @Html.AntiForgeryToken()
+
+        <div class="card" style="margin-bottom: 16px;">
+            <div class="card-header"><span class="card-title">Blueprint Details</span></div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">Name *</label>
+                    <input asp-for="Name" class="form-control" placeholder="HQ - Floor 1" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea asp-for="Description" class="form-control" rows="2"
+                              placeholder="Office layout, server room, datacenter map..."></textarea>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Location</label>
+                        <select asp-for="LocationId" class="form-control">
+                            <option value="">— Optional: link to location —</option>
+                            @foreach (var item in (ViewBag.Locations as Microsoft.AspNetCore.Mvc.Rendering.SelectList)!)
+                            { <option value="@item.Value">@item.Text</option> }
+                        </select>
+                    </div>
+                    <div></div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Canvas Width (px)</label>
+                        <input asp-for="CanvasWidth" class="form-control" type="number" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Canvas Height (px)</label>
+                        <input asp-for="CanvasHeight" class="form-control" type="number" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 16px;">
+            <div class="card-header"><span class="card-title">Blueprint File</span></div>
+            <div class="card-body">
+                <div id="dropZone" style="border: 2px dashed var(--border-color); border-radius: 8px; padding: 40px 24px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;">
+                    <i class="fas fa-cloud-upload-alt" style="font-size: 36px; color: var(--text-muted); margin-bottom: 10px;"></i>
+                    <div style="font-weight: 500; margin-bottom: 4px;">Drag &amp; drop or click to upload</div>
+                    <div class="text-sm text-muted">Supports: PDF, JPG, JPEG, PNG (max 50MB)</div>
+                    <input type="file" name="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png"
+                           style="display: none;" required />
+                </div>
+                <div id="filePreview" style="margin-top: 10px; display: none;">
+                    <div class="alert alert-info" style="margin: 0;">
+                        <i class="fas fa-file"></i>
+                        <span id="fileName"></span>
+                        <span id="fileSize" class="text-muted" style="margin-left: 8px;"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Upload Blueprint</button>
+            <a asp-controller="Blueprints" asp-action="Index" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const filePreview = document.getElementById('filePreview');
+const fileName = document.getElementById('fileName');
+const fileSize = document.getElementById('fileSize');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--accent-blue)'; dropZone.style.background = 'rgba(56,139,253,0.05)'; });
+dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--border-color)'; dropZone.style.background = ''; });
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--border-color)';
+    dropZone.style.background = '';
+    if (e.dataTransfer.files[0]) showFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) showFile(e.target.files[0]); });
+
+function showFile(file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    fileName.textContent = file.name;
+    fileSize.textContent = `(${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+    filePreview.style.display = 'block';
+}
+</script>
+}

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/InventoryMapper.Agent/InventoryMapper.Agent.csproj" />
+    <Project Path="src/InventoryMapper.API/InventoryMapper.API.csproj" />
+    <Project Path="src/InventoryMapper.Core/InventoryMapper.Core.csproj" />
+    <Project Path="src/InventoryMapper.Infrastructure/InventoryMapper.Infrastructure.csproj" />
+    <Project Path="src/InventoryMapper.Web/InventoryMapper.Web.csproj" />
+  </Folder>
+</Solution>

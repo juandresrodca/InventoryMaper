@@ -1,0 +1,769 @@
+@model InventoryMapper.Core.Entities.Blueprint
+@{
+    ViewData["Title"] = Model.Name;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<style>
+.canvas-shell { display: flex; height: calc(100vh - 52px); overflow: hidden; }
+.canvas-sidebar { width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; }
+.canvas-main { flex: 1; position: relative; overflow: hidden; background: #0A0E14; }
+.canvas-toolbar { height: 44px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 12px; gap: 6px; }
+#bpCanvas { position: absolute; top: 0; left: 0; cursor: grab; touch-action: none; }
+#bpCanvas.dragging { cursor: grabbing; }
+#bpCanvas.placing { cursor: crosshair; }
+
+.asset-panel-header { padding: 12px 14px; border-bottom: 1px solid var(--border-color); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.asset-panel-list { flex: 1; overflow-y: auto; padding: 8px; }
+.draggable-asset {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 6px;
+    background: var(--bg-tertiary); border: 1px solid var(--border-color);
+    margin-bottom: 4px; cursor: grab; font-size: 12px;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+}
+.draggable-asset:hover { background: var(--bg-hover); border-color: var(--accent-blue); }
+.draggable-asset .dot { flex-shrink: 0; }
+.asset-icon-sm { font-size: 14px; }
+
+.toolbar-btn {
+    padding: 5px 10px; border-radius: 5px;
+    background: var(--bg-tertiary); border: 1px solid var(--border-color);
+    color: var(--text-secondary); font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+    transition: all 0.15s;
+}
+.toolbar-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.toolbar-btn.active { background: rgba(56,139,253,0.2); border-color: var(--accent-blue); color: var(--accent-blue); }
+.toolbar-sep { width: 1px; height: 20px; background: var(--border-color); margin: 0 4px; }
+
+.canvas-tooltip {
+    position: fixed; background: var(--bg-card); border: 1px solid var(--border-color);
+    border-radius: 8px; padding: 10px 14px; font-size: 12px;
+    pointer-events: none; z-index: 500; min-width: 160px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    opacity: 0; transition: opacity 0.15s;
+}
+
+.zoom-info {
+    position: absolute; bottom: 12px; right: 12px;
+    background: rgba(22,27,34,0.9); border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--text-muted);
+    pointer-events: none;
+}
+
+.panel-tabs { display: flex; border-bottom: 1px solid var(--border-color); }
+.panel-tab { flex: 1; padding: 8px; text-align: center; font-size: 12px; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.15s; }
+.panel-tab.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+</style>
+
+<div class="canvas-shell">
+
+    <!-- Left Panel -->
+    <div class="canvas-sidebar">
+        <div style="padding: 10px 14px; border-bottom: 1px solid var(--border-color);">
+            <div style="font-size: 14px; font-weight: 600; margin-bottom: 2px;">@Model.Name</div>
+            <div class="text-sm text-muted">@(Model.Location?.Name ?? "Virtual Space")</div>
+        </div>
+
+        <div class="panel-tabs">
+            <div class="panel-tab active" data-tab="unplaced" onclick="switchTab('unplaced', this)">
+                <i class="fas fa-layer-group"></i> Assets
+            </div>
+            <div class="panel-tab" data-tab="placed" onclick="switchTab('placed', this)">
+                <i class="fas fa-map-pin"></i> Placed
+            </div>
+        </div>
+
+        <div id="tab-unplaced" class="asset-panel-list">
+            <div class="asset-panel-header" style="padding-top: 8px;">Drag to Canvas</div>
+            @foreach (var asset in ViewBag.UnplacedAssets as IEnumerable<InventoryMapper.Core.Entities.Asset> ?? [])
+            {
+                <div class="draggable-asset" draggable="true"
+                     data-asset-id="@asset.Id"
+                     data-hostname="@asset.Hostname"
+                     data-type="@asset.AssetType"
+                     data-state="@asset.OnlineState">
+                    <span class="dot dot-@asset.OnlineState.ToString().ToLower()"></span>
+                    <span class="asset-icon-sm">@GetIcon(asset.AssetType)</span>
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@asset.Hostname</div>
+                        <div class="text-muted" style="font-size: 10px;">@asset.AssetType</div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div id="tab-placed" class="asset-panel-list" style="display: none;">
+            <div class="asset-panel-header" style="padding-top: 8px;">On this blueprint</div>
+            @foreach (var asset in Model.PlacedAssets)
+            {
+                <div class="draggable-asset" style="cursor: pointer;"
+                     onclick="selectAsset('@asset.Id')"
+                     data-placed-id="@asset.Id">
+                    <span class="dot dot-@asset.OnlineState.ToString().ToLower()"></span>
+                    <span class="asset-icon-sm">@GetIcon(asset.AssetType)</span>
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@asset.Hostname</div>
+                        <div class="text-muted" style="font-size: 10px;">@asset.AssetType</div>
+                    </div>
+                    <a href="/Assets/Details/@asset.Id" style="color: var(--text-muted); font-size: 11px;"><i class="fas fa-external-link-alt"></i></a>
+                </div>
+            }
+        </div>
+
+        <div style="padding: 10px 14px; border-top: 1px solid var(--border-color);">
+            <button onclick="saveLayout()" class="btn btn-primary btn-sm w-100">
+                <i class="fas fa-save"></i> Save Layout
+            </button>
+        </div>
+    </div>
+
+    <!-- Canvas Area -->
+    <div class="canvas-main" id="canvasContainer">
+        <!-- Toolbar -->
+        <div class="canvas-toolbar">
+            <button class="toolbar-btn active" id="btn-select" onclick="setTool('select', this)" title="Select (V)">
+                <i class="fas fa-mouse-pointer"></i> Select
+            </button>
+            <button class="toolbar-btn" id="btn-pan" onclick="setTool('pan', this)" title="Pan (P)">
+                <i class="fas fa-hand-paper"></i> Pan
+            </button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" id="btn-zone" onclick="setTool('zone', this)" title="Draw Zone">
+                <i class="fas fa-vector-square"></i> Zone
+            </button>
+            <button class="toolbar-btn" id="btn-label" onclick="setTool('label', this)" title="Add Label">
+                <i class="fas fa-tag"></i> Label
+            </button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" onclick="zoomIn()" title="Zoom In">
+                <i class="fas fa-search-plus"></i>
+            </button>
+            <button class="toolbar-btn" onclick="zoomOut()" title="Zoom Out">
+                <i class="fas fa-search-minus"></i>
+            </button>
+            <button class="toolbar-btn" onclick="resetView()" title="Fit to Screen">
+                <i class="fas fa-expand-arrows-alt"></i>
+            </button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" onclick="toggleGrid()" id="btn-grid">
+                <i class="fas fa-th"></i> Grid
+            </button>
+            <div style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
+                <span class="text-sm text-muted">@Model.PlacedAssets.Count placed</span>
+                <a asp-controller="Blueprints" asp-action="Index" class="btn btn-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> Back
+                </a>
+            </div>
+        </div>
+
+        <canvas id="bpCanvas"></canvas>
+
+        <div class="zoom-info" id="zoomInfo">100%</div>
+    </div>
+</div>
+
+<!-- Tooltip -->
+<div class="canvas-tooltip" id="tooltip"></div>
+
+<!-- Context Menu -->
+<div id="ctxMenu" style="position: fixed; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 4px 0; z-index: 600; display: none; min-width: 180px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+    <div id="ctxViewDetails" class="ctx-item" onclick="ctxViewDetails()"><i class="fas fa-eye"></i> View Details</div>
+    <div id="ctxRemove" class="ctx-item ctx-danger" onclick="ctxRemoveAsset()"><i class="fas fa-unlink"></i> Remove from Blueprint</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" onclick="closeCtxMenu()"><i class="fas fa-times"></i> Cancel</div>
+</div>
+
+<style>
+.ctx-item { padding: 8px 16px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+.ctx-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ctx-danger:hover { color: var(--accent-red); }
+.ctx-sep { height: 1px; background: var(--border-color); margin: 4px 0; }
+</style>
+
+@section Scripts {
+<script>
+const BLUEPRINT_ID = '@Model.Id';
+const BG_IMAGE = '@Model.FileStoragePath';
+const CANVAS_W = @Model.CanvasWidth;
+const CANVAS_H = @Model.CanvasHeight;
+
+const ASSET_ICONS = {
+    'Server': '🖥️', 'VirtualMachine': '⚙️', 'NetworkSwitch': '🔀', 'Firewall': '🛡️',
+    'Router': '📡', 'PhysicalDevice': '💻', 'Printer': '🖨️', 'Container': '📦',
+    'CloudInstance': '☁️', 'AccessPoint': '📶', 'Hypervisor': '🔧', 'Unknown': '📟'
+};
+
+const STATE_COLORS = {
+    'Online': '#3FB950', 'Offline': '#F85149', 'Unknown': '#6E7681', 'Unreachable': '#D29922'
+};
+
+// Canvas state
+const canvas = document.getElementById('bpCanvas');
+const ctx2d = canvas.getContext('2d');
+let bgImage = null;
+let viewX = 0, viewY = 0, scale = 1;
+let isDragging = false, dragStartX = 0, dragStartY = 0, dragViewX = 0, dragViewY = 0;
+let currentTool = 'select';
+let showGrid = false;
+let objects = []; // {id, type:'asset'|'zone'|'label', ...props}
+let selected = null, hoveredId = null;
+let dragObject = null, dragObjStartX = 0, dragObjStartY = 0, dragObjMouseX = 0, dragObjMouseY = 0;
+let drawingZone = null;
+let ctxTarget = null;
+
+// Load layout
+async function loadLayout() {
+    const res = await fetch(`/Blueprints/Layout/${BLUEPRINT_ID}`);
+    const data = await res.json();
+
+    objects = [];
+
+    for (const p of data.assetPlacements) {
+        objects.push({
+            id: p.assetId, type: 'asset',
+            x: p.x, y: p.y, w: p.width || 48, h: p.height || 48,
+            hostname: p.hostname, assetType: p.assetType, state: p.onlineState,
+            zIndex: p.zIndex || 5
+        });
+    }
+
+    for (const z of data.zones) {
+        objects.push({
+            id: z.id.toString(), type: 'zone',
+            x: z.x, y: z.y, w: z.width, h: z.height,
+            name: z.name, color: z.color || '#3B82F680',
+            zIndex: z.zIndex || 1
+        });
+    }
+
+    for (const a of data.annotations) {
+        objects.push({
+            id: a.id.toString(), type: 'label',
+            x: a.x, y: a.y, w: a.width || 100, h: a.height || 30,
+            label: a.label, color: a.color || '#FFD700',
+            zIndex: a.zIndex || 10
+        });
+    }
+
+    sortObjects();
+    redraw();
+}
+
+function sortObjects() {
+    objects.sort((a, b) => a.zIndex - b.zIndex);
+}
+
+// Drawing
+function resizeCanvas() {
+    const container = document.getElementById('canvasContainer');
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight - 44; // subtract toolbar
+    canvas.style.top = '44px';
+    redraw();
+}
+
+function redraw() {
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx2d.save();
+    ctx2d.translate(viewX, viewY);
+    ctx2d.scale(scale, scale);
+
+    // Background
+    if (bgImage) {
+        ctx2d.drawImage(bgImage, 0, 0, CANVAS_W, CANVAS_H);
+    } else {
+        ctx2d.fillStyle = '#0A0E14';
+        ctx2d.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
+
+    // Grid
+    if (showGrid) drawGrid();
+
+    // Objects sorted by zIndex
+    for (const obj of objects) drawObject(obj);
+
+    // Drawing zone preview
+    if (drawingZone) {
+        ctx2d.strokeStyle = '#3B82F6';
+        ctx2d.lineWidth = 2 / scale;
+        ctx2d.setLineDash([6/scale, 3/scale]);
+        ctx2d.fillStyle = 'rgba(59, 130, 246, 0.1)';
+        ctx2d.fillRect(drawingZone.x, drawingZone.y, drawingZone.w, drawingZone.h);
+        ctx2d.strokeRect(drawingZone.x, drawingZone.y, drawingZone.w, drawingZone.h);
+        ctx2d.setLineDash([]);
+    }
+
+    ctx2d.restore();
+    document.getElementById('zoomInfo').textContent = `${Math.round(scale * 100)}%`;
+}
+
+function drawGrid() {
+    const GRID = 40;
+    ctx2d.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx2d.lineWidth = 1 / scale;
+    for (let x = 0; x <= CANVAS_W; x += GRID) {
+        ctx2d.beginPath(); ctx2d.moveTo(x, 0); ctx2d.lineTo(x, CANVAS_H); ctx2d.stroke();
+    }
+    for (let y = 0; y <= CANVAS_H; y += GRID) {
+        ctx2d.beginPath(); ctx2d.moveTo(0, y); ctx2d.lineTo(CANVAS_W, y); ctx2d.stroke();
+    }
+}
+
+function drawObject(obj) {
+    const isSelected = selected === obj.id;
+    const isHovered = hoveredId === obj.id;
+
+    if (obj.type === 'zone') {
+        const c = parseColor(obj.color, 0.2);
+        ctx2d.fillStyle = c;
+        ctx2d.fillRect(obj.x, obj.y, obj.w, obj.h);
+        ctx2d.strokeStyle = isSelected ? '#388BFD' : parseColor(obj.color, 0.8);
+        ctx2d.lineWidth = (isSelected ? 2.5 : 1.5) / scale;
+        ctx2d.strokeRect(obj.x, obj.y, obj.w, obj.h);
+        ctx2d.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx2d.font = `${Math.max(10, 13/scale)}px -apple-system, sans-serif`;
+        ctx2d.fillText(obj.name, obj.x + 6/scale, obj.y + 16/scale);
+    }
+    else if (obj.type === 'label') {
+        ctx2d.fillStyle = 'rgba(0,0,0,0.6)';
+        roundRect(ctx2d, obj.x, obj.y, obj.w, obj.h, 4/scale);
+        ctx2d.fill();
+        ctx2d.fillStyle = obj.color;
+        ctx2d.font = `bold ${Math.max(9, 12/scale)}px -apple-system, sans-serif`;
+        ctx2d.fillText(obj.label, obj.x + 6/scale, obj.y + obj.h/2 + 4/scale);
+        if (isSelected) {
+            ctx2d.strokeStyle = '#388BFD';
+            ctx2d.lineWidth = 2/scale;
+            ctx2d.strokeRect(obj.x - 2/scale, obj.y - 2/scale, obj.w + 4/scale, obj.h + 4/scale);
+        }
+    }
+    else if (obj.type === 'asset') {
+        const stateColor = STATE_COLORS[obj.state] || '#6E7681';
+        const boxW = obj.w, boxH = obj.h;
+
+        // Shadow for selected/hovered
+        if (isSelected || isHovered) {
+            ctx2d.shadowColor = isSelected ? '#388BFD' : 'rgba(255,255,255,0.2)';
+            ctx2d.shadowBlur = 12 / scale;
+        }
+
+        // Box background
+        ctx2d.fillStyle = isSelected ? 'rgba(56,139,253,0.25)' : 'rgba(22,27,34,0.85)';
+        roundRect(ctx2d, obj.x, obj.y, boxW, boxH, 8/scale);
+        ctx2d.fill();
+
+        ctx2d.shadowBlur = 0;
+        ctx2d.shadowColor = 'transparent';
+
+        // Border
+        ctx2d.strokeStyle = isSelected ? '#388BFD' : (isHovered ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)');
+        ctx2d.lineWidth = (isSelected ? 2 : 1) / scale;
+        roundRect(ctx2d, obj.x, obj.y, boxW, boxH, 8/scale);
+        ctx2d.stroke();
+
+        // Status dot
+        ctx2d.fillStyle = stateColor;
+        ctx2d.beginPath();
+        ctx2d.arc(obj.x + boxW - 8/scale, obj.y + 8/scale, 4/scale, 0, Math.PI*2);
+        ctx2d.fill();
+
+        // Icon
+        const icon = ASSET_ICONS[obj.assetType] || '📟';
+        ctx2d.font = `${Math.max(12, (boxH * 0.35))}px serif`;
+        ctx2d.fillText(icon, obj.x + boxW/2 - (boxH*0.18), obj.y + boxH * 0.5);
+
+        // Hostname label
+        if (boxH >= 36) {
+            ctx2d.fillStyle = 'rgba(230, 237, 243, 0.9)';
+            ctx2d.font = `bold ${Math.min(11, Math.max(8, boxH * 0.18))/1}px -apple-system, sans-serif`;
+            ctx2d.textAlign = 'center';
+            const shortName = obj.hostname.length > 12 ? obj.hostname.substring(0, 11) + '…' : obj.hostname;
+            ctx2d.fillText(shortName, obj.x + boxW/2, obj.y + boxH - 6/scale);
+            ctx2d.textAlign = 'left';
+        }
+    }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+}
+
+function parseColor(hex, alpha) {
+    if (hex && hex.length === 9) return hex; // already has alpha
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Coordinate helpers
+function canvasToWorld(cx, cy) {
+    return { x: (cx - viewX) / scale, y: (cy - viewY) / scale };
+}
+
+function hitTest(wx, wy) {
+    for (let i = objects.length - 1; i >= 0; i--) {
+        const o = objects[i];
+        if (wx >= o.x && wx <= o.x + o.w && wy >= o.y && wy <= o.y + o.h) return o;
+    }
+    return null;
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', onMouseDown);
+canvas.addEventListener('mousemove', onMouseMove);
+canvas.addEventListener('mouseup', onMouseUp);
+canvas.addEventListener('wheel', onWheel, { passive: false });
+canvas.addEventListener('contextmenu', onContextMenu);
+canvas.addEventListener('dblclick', onDblClick);
+
+let zoneStartX = 0, zoneStartY = 0, isDrawingZone = false;
+
+function onMouseDown(e) {
+    if (e.button === 2) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const w = canvasToWorld(mx, my);
+
+    if (currentTool === 'pan') {
+        isDragging = true;
+        dragStartX = e.clientX; dragStartY = e.clientY;
+        dragViewX = viewX; dragViewY = viewY;
+        canvas.classList.add('dragging');
+        return;
+    }
+
+    if (currentTool === 'zone') {
+        isDrawingZone = true;
+        zoneStartX = w.x; zoneStartY = w.y;
+        drawingZone = { x: w.x, y: w.y, w: 0, h: 0 };
+        return;
+    }
+
+    if (currentTool === 'select') {
+        const hit = hitTest(w.x, w.y);
+        if (hit) {
+            selected = hit.id;
+            dragObject = hit;
+            dragObjStartX = hit.x; dragObjStartY = hit.y;
+            dragObjMouseX = w.x; dragObjMouseY = w.y;
+        } else {
+            selected = null;
+            isDragging = true;
+            dragStartX = e.clientX; dragStartY = e.clientY;
+            dragViewX = viewX; dragViewY = viewY;
+        }
+        redraw();
+    }
+}
+
+function onMouseMove(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const w = canvasToWorld(mx, my);
+
+    if (isDragging) {
+        viewX = dragViewX + (e.clientX - dragStartX);
+        viewY = dragViewY + (e.clientY - dragStartY);
+        redraw();
+        return;
+    }
+
+    if (dragObject) {
+        const dx = w.x - dragObjMouseX;
+        const dy = w.y - dragObjMouseY;
+        dragObject.x = snapToGrid(dragObjStartX + dx);
+        dragObject.y = snapToGrid(dragObjStartY + dy);
+        redraw();
+        return;
+    }
+
+    if (isDrawingZone && drawingZone) {
+        drawingZone.w = w.x - zoneStartX;
+        drawingZone.h = w.y - zoneStartY;
+        redraw();
+        return;
+    }
+
+    // Hover
+    const hit = hitTest(w.x, w.y);
+    const newHover = hit ? hit.id : null;
+    if (newHover !== hoveredId) { hoveredId = newHover; redraw(); }
+
+    // Tooltip
+    const tooltip = document.getElementById('tooltip');
+    if (hit && hit.type === 'asset') {
+        tooltip.style.opacity = '1';
+        tooltip.style.left = `${e.clientX + 14}px`;
+        tooltip.style.top = `${e.clientY - 10}px`;
+        tooltip.innerHTML = `<div style="font-weight:600;margin-bottom:4px;">${hit.hostname}</div>
+            <div class="text-sm text-muted">${hit.assetType}</div>
+            <div style="margin-top:6px;"><span class="badge badge-${hit.state.toLowerCase()}">${hit.state}</span></div>`;
+    } else {
+        tooltip.style.opacity = '0';
+    }
+}
+
+function onMouseUp(e) {
+    if (isDrawingZone && drawingZone && (Math.abs(drawingZone.w) > 20 || Math.abs(drawingZone.h) > 20)) {
+        const x = drawingZone.w > 0 ? drawingZone.x : drawingZone.x + drawingZone.w;
+        const y = drawingZone.h > 0 ? drawingZone.y : drawingZone.y + drawingZone.h;
+        const w = Math.abs(drawingZone.w);
+        const h = Math.abs(drawingZone.h);
+        createZone(x, y, w, h);
+    }
+    isDrawingZone = false; drawingZone = null;
+
+    if (dragObject) {
+        savePlacementUpdate(dragObject);
+    }
+    dragObject = null;
+    isDragging = false;
+    canvas.classList.remove('dragging');
+    redraw();
+}
+
+function onWheel(e) {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.min(4, Math.max(0.1, scale * delta));
+    viewX = mx - (mx - viewX) * (newScale / scale);
+    viewY = my - (my - viewY) * (newScale / scale);
+    scale = newScale;
+    redraw();
+}
+
+function onContextMenu(e) {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const w = canvasToWorld(mx, my);
+    const hit = hitTest(w.x, w.y);
+    if (hit) {
+        ctxTarget = hit;
+        selected = hit.id;
+        const menu = document.getElementById('ctxMenu');
+        menu.style.display = 'block';
+        menu.style.left = e.clientX + 'px';
+        menu.style.top = e.clientY + 'px';
+        document.getElementById('ctxViewDetails').style.display = hit.type === 'asset' ? 'flex' : 'none';
+        redraw();
+    }
+}
+
+function onDblClick(e) {
+    const rect = canvas.getBoundingClientRect();
+    const w = canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    const hit = hitTest(w.x, w.y);
+    if (hit && hit.type === 'asset') {
+        window.location.href = `/Assets/Details/${hit.id}`;
+    } else if (currentTool === 'label') {
+        const text = prompt('Enter label text:');
+        if (text) createLabel(w.x, w.y, text);
+    }
+}
+
+document.addEventListener('click', e => {
+    if (!document.getElementById('ctxMenu').contains(e.target))
+        closeCtxMenu();
+});
+
+function closeCtxMenu() { document.getElementById('ctxMenu').style.display = 'none'; ctxTarget = null; }
+function ctxViewDetails() { if (ctxTarget) window.location.href = `/Assets/Details/${ctxTarget.id}`; closeCtxMenu(); }
+async function ctxRemoveAsset() {
+    if (!ctxTarget || ctxTarget.type !== 'asset') return closeCtxMenu();
+    await fetch(`/Blueprints/RemoveAsset?assetId=${ctxTarget.id}`, { method: 'POST', headers: {'RequestVerificationToken': getAntiForgeryToken()} });
+    objects = objects.filter(o => o.id !== ctxTarget.id);
+    closeCtxMenu(); redraw();
+}
+
+// Drag-drop from sidebar
+document.querySelectorAll('.draggable-asset[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', JSON.stringify({
+            id: el.dataset.assetId,
+            hostname: el.dataset.hostname,
+            type: el.dataset.type,
+            state: el.dataset.state
+        }));
+    });
+});
+
+canvas.addEventListener('dragover', e => e.preventDefault());
+canvas.addEventListener('drop', async e => {
+    e.preventDefault();
+    try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const rect = canvas.getBoundingClientRect();
+        const w = canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        const x = snapToGrid(w.x - 24);
+        const y = snapToGrid(w.y - 24);
+
+        await fetch(`/Blueprints/PlaceAsset?blueprintId=${BLUEPRINT_ID}&assetId=${data.id}&x=${x}&y=${y}`, {
+            method: 'POST',
+            headers: { 'RequestVerificationToken': getAntiForgeryToken() }
+        });
+
+        const existing = objects.find(o => o.id === data.id);
+        if (!existing) {
+            objects.push({ id: data.id, type: 'asset', x, y, w: 48, h: 48, hostname: data.hostname, assetType: data.type, state: data.state, zIndex: 5 });
+        }
+        redraw();
+    } catch(err) { console.error('Drop failed', err); }
+});
+
+// Save layout
+async function saveLayout() {
+    const placements = objects.filter(o => o.type === 'asset').map(o => ({
+        assetId: o.id, hostname: o.hostname, assetType: o.assetType, onlineState: o.state,
+        x: o.x, y: o.y, width: o.w, height: o.h, zIndex: o.zIndex
+    }));
+
+    const res = await fetch('/Blueprints/SaveLayout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': getAntiForgeryToken() },
+        body: JSON.stringify({ blueprintId: BLUEPRINT_ID, assetPlacements: placements, annotations: [], zones: [] })
+    });
+    if (res.ok) showToast('Layout saved!', 'success');
+    else showToast('Save failed', 'error');
+}
+
+async function savePlacementUpdate(obj) {
+    if (obj.type !== 'asset') return;
+    await fetch(`/Blueprints/PlaceAsset?blueprintId=${BLUEPRINT_ID}&assetId=${obj.id}&x=${obj.x}&y=${obj.y}`, {
+        method: 'POST',
+        headers: { 'RequestVerificationToken': getAntiForgeryToken() }
+    });
+}
+
+async function createZone(x, y, w, h) {
+    const name = prompt('Zone name:') || 'Zone';
+    const res = await fetch(`/Blueprints/AddZone/${BLUEPRINT_ID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': getAntiForgeryToken() },
+        body: JSON.stringify({ name, x, y, width: w, height: h })
+    });
+    const zone = await res.json();
+    objects.push({ id: zone.id.toString(), type: 'zone', x, y, w, h, name, color: '#3B82F6', zIndex: 1 });
+    sortObjects(); redraw();
+    setTool('select', document.getElementById('btn-select'));
+}
+
+async function createLabel(x, y, text) {
+    const res = await fetch(`/Blueprints/AddAnnotation/${BLUEPRINT_ID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': getAntiForgeryToken() },
+        body: JSON.stringify({ label: text, x, y })
+    });
+    const ann = await res.json();
+    objects.push({ id: ann.id.toString(), type: 'label', x, y, w: 100, h: 28, label: text, color: '#FFD700', zIndex: 10 });
+    redraw();
+    setTool('select', document.getElementById('btn-select'));
+}
+
+// Toolbar controls
+function setTool(tool, btn) {
+    currentTool = tool;
+    document.querySelectorAll('.toolbar-btn[id^="btn-"]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    canvas.className = tool === 'pan' ? 'dragging' : tool === 'zone' || tool === 'label' ? 'placing' : '';
+}
+
+function zoomIn() { scale = Math.min(4, scale * 1.2); redraw(); }
+function zoomOut() { scale = Math.max(0.1, scale * 0.8); redraw(); }
+function resetView() {
+    const cw = canvas.width, ch = canvas.height;
+    scale = Math.min(cw / CANVAS_W, ch / CANVAS_H) * 0.9;
+    viewX = (cw - CANVAS_W * scale) / 2;
+    viewY = (ch - CANVAS_H * scale) / 2;
+    redraw();
+}
+
+function toggleGrid() {
+    showGrid = !showGrid;
+    document.getElementById('btn-grid').classList.toggle('active', showGrid);
+    redraw();
+}
+
+function snapToGrid(v) { return showGrid ? Math.round(v / 40) * 40 : v; }
+function selectAsset(id) { selected = id; redraw(); }
+
+function getAntiForgeryToken() {
+    return document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+}
+
+function showToast(msg, type) {
+    const t = document.createElement('div');
+    t.className = `alert alert-${type}`;
+    t.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;min-width:200px;';
+    t.innerHTML = `<i class="fas fa-${type === 'success' ? 'check' : 'times'}-circle"></i> ${msg}`;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+    if (e.key === 'v' || e.key === 'V') setTool('select', document.getElementById('btn-select'));
+    if (e.key === 'p' || e.key === 'P') setTool('pan', document.getElementById('btn-pan'));
+    if (e.key === 'Delete' && selected) {
+        const idx = objects.findIndex(o => o.id === selected);
+        if (idx !== -1 && objects[idx].type !== 'asset') { objects.splice(idx, 1); selected = null; redraw(); }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveLayout(); }
+});
+
+// Init
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+const bgImg = new Image();
+bgImg.onload = () => { bgImage = bgImg; resetView(); };
+bgImg.onerror = () => resetView();
+if (BG_IMAGE) bgImg.src = BG_IMAGE;
+else resetView();
+
+loadLayout();
+
+// Add anti-forgery token to page
+const af = document.createElement('input');
+af.type = 'hidden'; af.name = '__RequestVerificationToken';
+af.value = '@Html.AntiForgeryToken()'.replace(/.*value="([^"]+)".*/s, '$1');
+document.body.appendChild(af);
+</script>
+}
+
+@functions {
+    string GetIcon(InventoryMapper.Core.Enums.AssetType type) => type switch
+    {
+        InventoryMapper.Core.Enums.AssetType.Server => "🖥️",
+        InventoryMapper.Core.Enums.AssetType.VirtualMachine => "⚙️",
+        InventoryMapper.Core.Enums.AssetType.NetworkSwitch => "🔀",
+        InventoryMapper.Core.Enums.AssetType.Firewall => "🛡️",
+        InventoryMapper.Core.Enums.AssetType.Router => "📡",
+        InventoryMapper.Core.Enums.AssetType.PhysicalDevice => "💻",
+        InventoryMapper.Core.Enums.AssetType.Printer => "🖨️",
+        InventoryMapper.Core.Enums.AssetType.Container => "📦",
+        InventoryMapper.Core.Enums.AssetType.CloudInstance => "☁️",
+        _ => "📟"
+    };
+}

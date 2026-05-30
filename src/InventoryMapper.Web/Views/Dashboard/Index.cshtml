@@ -1,0 +1,256 @@
+@model InventoryMapper.Core.DTOs.DashboardStatsDto
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="page-content">
+
+    <!-- Stat Cards Row -->
+    <div class="stat-grid">
+        <div class="stat-card" style="--stat-color: #388BFD;">
+            <div class="stat-label">Total Assets</div>
+            <div class="stat-value" id="stat-total">@Model.TotalAssets</div>
+            <div class="stat-sub">All managed devices</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #3FB950;">
+            <div class="stat-label">Online</div>
+            <div class="stat-value" id="stat-online" style="color: var(--accent-green);">@Model.OnlineAssets</div>
+            <div class="stat-sub">Currently reachable</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #F85149;">
+            <div class="stat-label">Offline</div>
+            <div class="stat-value" id="stat-offline" style="color: var(--accent-red);">@Model.OfflineAssets</div>
+            <div class="stat-sub">Unreachable devices</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #8B5CF6;">
+            <div class="stat-label">Virtual</div>
+            <div class="stat-value" id="stat-virtual" style="color: var(--accent-purple);">@Model.VirtualAssets</div>
+            <div class="stat-sub">VMs &amp; containers</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #F59E0B;">
+            <div class="stat-label">Network</div>
+            <div class="stat-value" style="color: #F59E0B;">@Model.NetworkDevices</div>
+            <div class="stat-sub">Switches, routers, FW</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #D29922;">
+            <div class="stat-label">Active Alerts</div>
+            <div class="stat-value" id="stat-alerts" style="color: @(Model.CriticalAlerts > 0 ? "var(--accent-red)" : "var(--accent-yellow)");">@Model.ActiveAlerts</div>
+            <div class="stat-sub">@Model.CriticalAlerts critical</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #DB6D28;">
+            <div class="stat-label">Unassigned</div>
+            <div class="stat-value" style="color: var(--accent-orange);">@Model.UnassignedAssets</div>
+            <div class="stat-sub">No user assigned</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #6E7681;">
+            <div class="stat-label">Unplaced</div>
+            <div class="stat-value" style="color: var(--text-muted);">@Model.UnplacedAssets</div>
+            <div class="stat-sub">Not on any blueprint</div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid-2" style="margin-bottom: 24px;">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Assets by Type</span>
+                <span class="text-sm text-muted">Distribution</span>
+            </div>
+            <div class="card-body" style="display: flex; align-items: center; justify-content: center; height: 220px;">
+                <canvas id="typeChart"></canvas>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Online / Offline Trend</span>
+                <span class="text-sm text-muted">Last 24h</span>
+            </div>
+            <div class="card-body" style="height: 220px;">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Row: Recent Check-ins + Active Alerts -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Recent Check-Ins</span>
+                <a asp-controller="Assets" asp-action="Index" class="btn btn-secondary btn-sm">View All</a>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Hostname</th>
+                        <th>Type</th>
+                        <th>State</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.RecentCheckIns)
+                    {
+                        <tr>
+                            <td><a asp-controller="Assets" asp-action="Index" asp-route-search="@item.Hostname">@item.Hostname</a></td>
+                            <td><span class="text-muted text-sm">@item.AssetType</span></td>
+                            <td>
+                                <span class="badge badge-@item.State.ToLower()">
+                                    <span class="dot dot-@item.State.ToLower()"></span>
+                                    @item.State
+                                </span>
+                            </td>
+                            <td class="text-sm text-muted">@item.CheckIn.ToLocalTime().ToString("HH:mm:ss")</td>
+                        </tr>
+                    }
+                    @if (!Model.RecentCheckIns.Any())
+                    {
+                        <tr><td colspan="4" class="text-center text-muted" style="padding: 24px;">No check-ins yet</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Active Alerts</span>
+                <a asp-controller="Dashboard" asp-action="Alerts" class="btn btn-secondary btn-sm">View All</a>
+            </div>
+            @if (Model.RecentAlerts.Any())
+            {
+                <div style="padding: 8px 0;">
+                    @foreach (var alert in Model.RecentAlerts)
+                    {
+                        <div style="padding: 10px 18px; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
+                            <div style="margin-top: 2px;">
+                                @if (alert.Severity == "Critical")
+                                { <i class="fas fa-exclamation-circle" style="color: var(--accent-red);"></i> }
+                                else if (alert.Severity == "Warning")
+                                { <i class="fas fa-exclamation-triangle" style="color: var(--accent-yellow);"></i> }
+                                else
+                                { <i class="fas fa-info-circle" style="color: var(--accent-blue);"></i> }
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="font-size: 13px; font-weight: 500;">@alert.Title</div>
+                                @if (alert.Hostname != null)
+                                {
+                                    <div class="text-sm text-muted">@alert.Hostname</div>
+                                }
+                                <div class="text-sm text-muted">@alert.CreatedAt.ToLocalTime().ToString("MMM d, HH:mm")</div>
+                            </div>
+                            <span class="badge badge-@alert.Severity.ToLower()">@alert.Severity</span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="fas fa-check-circle" style="color: var(--accent-green);"></i></div>
+                    <div class="empty-title">No Active Alerts</div>
+                    <div class="text-sm">All systems nominal</div>
+                </div>
+            }
+        </div>
+    </div>
+
+</div>
+
+@section Scripts {
+<script>
+const stats = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.AssetsByType));
+const history = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.OnlineHistory));
+
+// Asset type donut chart
+const typeCtx = document.getElementById('typeChart');
+if (typeCtx && stats.length) {
+    new Chart(typeCtx, {
+        type: 'doughnut',
+        data: {
+            labels: stats.map(s => s.type),
+            datasets: [{
+                data: stats.map(s => s.count),
+                backgroundColor: stats.map(s => s.color),
+                borderColor: '#21262D',
+                borderWidth: 2,
+                hoverOffset: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { color: '#8B949E', font: { size: 11 }, padding: 10, boxWidth: 12 }
+                }
+            },
+            cutout: '65%'
+        }
+    });
+}
+
+// Online/Offline trend line chart
+const trendCtx = document.getElementById('trendChart');
+if (trendCtx) {
+    const labels = history.length
+        ? history.map(h => new Date(h.timestamp).getHours() + ':00')
+        : Array.from({length: 8}, (_, i) => `${i*3}:00`);
+    const onlineData = history.length ? history.map(h => h.online) : [0,0,0,0,0,0,0,0];
+    const offlineData = history.length ? history.map(h => h.offline) : [0,0,0,0,0,0,0,0];
+
+    new Chart(trendCtx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Online',
+                    data: onlineData,
+                    borderColor: '#3FB950',
+                    backgroundColor: 'rgba(63, 185, 80, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3
+                },
+                {
+                    label: 'Offline',
+                    data: offlineData,
+                    borderColor: '#F85149',
+                    backgroundColor: 'rgba(248, 81, 73, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { color: '#6E7681', font: { size: 10 } }, grid: { color: '#30363D' } },
+                y: { ticks: { color: '#6E7681', font: { size: 10 } }, grid: { color: '#30363D' }, min: 0 }
+            },
+            plugins: {
+                legend: { labels: { color: '#8B949E', font: { size: 11 }, boxWidth: 12 } }
+            }
+        }
+    });
+}
+
+// SignalR live updates
+const connection = new signalR.HubConnectionBuilder()
+    .withUrl('/hubs/monitoring')
+    .withAutomaticReconnect()
+    .build();
+
+connection.on('StatsUpdated', data => {
+    const el = id => document.getElementById(id);
+    if (el('stat-total')) el('stat-total').textContent = data.totalAssets;
+    if (el('stat-online')) el('stat-online').textContent = data.onlineAssets;
+    if (el('stat-offline')) el('stat-offline').textContent = data.offlineAssets;
+    if (el('stat-alerts')) el('stat-alerts').textContent = data.activeAlerts;
+});
+
+connection.start().then(() => connection.invoke('JoinGroup', 'dashboard')).catch(console.error);
+</script>
+}

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@(ViewData["Title"] ?? "InventoryMapper") — Enterprise Asset Management</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
+</head>
+<body>
+<div class="app-shell">
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-icon">&#x1F5A7;</div>
+            <span>InventoryMapper</span>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Overview</div>
+            <a class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Dashboard" ? "active" : "")"
+               asp-controller="Dashboard" asp-action="Index">
+                <i class="icon fas fa-th-large"></i> Dashboard
+            </a>
+            <a class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Dashboard" && ViewContext.RouteData.Values["action"]?.ToString() == "Alerts" ? "active" : "")"
+               asp-controller="Dashboard" asp-action="Alerts">
+                <i class="icon fas fa-bell"></i> Alerts
+                @if (ViewBag.AlertCount is int ac && ac > 0)
+                {
+                    <span class="sidebar-badge">@ac</span>
+                }
+            </a>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Assets</div>
+            <a class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Assets" ? "active" : "")"
+               asp-controller="Assets" asp-action="Index">
+                <i class="icon fas fa-server"></i> All Assets
+            </a>
+            <a class="sidebar-item"
+               asp-controller="Assets" asp-action="Index" asp-route-AssetType="PhysicalDevice">
+                <i class="icon fas fa-desktop"></i> Physical Devices
+            </a>
+            <a class="sidebar-item"
+               asp-controller="Assets" asp-action="Index" asp-route-AssetType="VirtualMachine">
+                <i class="icon fas fa-microchip"></i> Virtual Machines
+            </a>
+            <a class="sidebar-item"
+               asp-controller="Assets" asp-action="Index" asp-route-AssetType="NetworkSwitch">
+                <i class="icon fas fa-network-wired"></i> Network Devices
+            </a>
+            <a class="sidebar-item"
+               asp-controller="Assets" asp-action="Index" asp-route-AssetType="Server">
+                <i class="icon fas fa-hdd"></i> Servers
+            </a>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Infrastructure</div>
+            <a class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Blueprints" ? "active" : "")"
+               asp-controller="Blueprints" asp-action="Index">
+                <i class="icon fas fa-map"></i> Blueprints
+            </a>
+            <a class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Locations" ? "active" : "")"
+               asp-controller="Locations" asp-action="Index">
+                <i class="icon fas fa-building"></i> Locations
+            </a>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Operations</div>
+            <a class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Import" ? "active" : "")"
+               asp-controller="Import" asp-action="Index">
+                <i class="icon fas fa-file-import"></i> Bulk Import
+            </a>
+        </div>
+
+        <div style="margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border-color); font-size: 11px; color: var(--text-muted);">
+            InventoryMapper v1.0<br />
+            <span style="color: var(--accent-green);">&#x25CF;</span> System Online
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content">
+
+        <!-- Top Bar -->
+        <div class="topbar">
+            <div class="topbar-title">@(ViewData["Title"] ?? "Dashboard")</div>
+            <div class="topbar-search">
+                <i class="fas fa-search" style="color: var(--text-muted); font-size: 12px;"></i>
+                <input type="text" id="globalSearch" placeholder="Search assets..." autocomplete="off" />
+            </div>
+            <div class="topbar-actions">
+                <a asp-controller="Assets" asp-action="Create" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus"></i> Add Asset
+                </a>
+            </div>
+        </div>
+
+        <!-- Flash Messages -->
+        @if (TempData["Success"] is string success)
+        {
+            <div style="padding: 0 24px; padding-top: 16px;">
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> @success
+                </div>
+            </div>
+        }
+        @if (TempData["Error"] is string error)
+        {
+            <div style="padding: 0 24px; padding-top: 16px;">
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-circle"></i> @error
+                </div>
+            </div>
+        }
+
+        @RenderBody()
+    </div>
+</div>
+
+<!-- Global Search Dropdown -->
+<div id="searchResults" style="position: fixed; top: 58px; right: 24px; width: 360px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; z-index: 200; display: none; max-height: 400px; overflow-y: auto;"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src="~/js/site.js" asp-append-version="true"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

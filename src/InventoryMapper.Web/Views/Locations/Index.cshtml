@@ -1,0 +1,120 @@
+@model IEnumerable<InventoryMapper.Core.Entities.Location>
+@{
+    ViewData["Title"] = "Locations";
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Locations</h1>
+            <p class="page-subtitle">Physical sites, datacenters, and virtual spaces</p>
+        </div>
+        <button onclick="document.getElementById('createModal').classList.add('open')" class="btn btn-primary">
+            <i class="fas fa-plus"></i> New Location
+        </button>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Building / Site</th>
+                    <th>Floor / Room</th>
+                    <th>Environment</th>
+                    <th>Assets</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var loc in Model)
+                {
+                    <tr>
+                        <td>
+                            <div style="font-weight: 500;">@loc.Name</div>
+                            @if (loc.IsDefault)
+                            {<span class="badge badge-info" style="margin-top: 3px;">Default</span>}
+                        </td>
+                        <td>
+                            @{
+                                var (icon, color) = loc.LocationType switch
+                                {
+                                    Core.Enums.LocationType.Physical => ("🏢", "var(--accent-blue)"),
+                                    Core.Enums.LocationType.Virtual => ("⚙️", "var(--accent-purple)"),
+                                    Core.Enums.LocationType.Cloud => ("☁️", "var(--accent-green)"),
+                                    _ => ("🗂️", "var(--text-muted)")
+                                };
+                            }
+                            <span>@icon</span> <span class="text-sm" style="color: @color">@loc.LocationType</span>
+                        </td>
+                        <td class="text-sm">@(loc.Building ?? loc.Site ?? "—")</td>
+                        <td class="text-sm text-muted">@(loc.Floor != null ? $"Floor {loc.Floor}" : "") @(loc.Room != null ? $"/ {loc.Room}" : "")</td>
+                        <td class="text-sm text-muted">@(loc.VirtualEnvironment ?? loc.CloudProvider ?? "—")</td>
+                        <td class="text-sm">@loc.Assets.Count</td>
+                        <td>
+                            @if (!loc.IsDefault)
+                            {
+                                <form asp-controller="Locations" asp-action="Delete" asp-route-id="@loc.Id"
+                                      method="post" onsubmit="return confirm('Delete @loc.Name?')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-trash"></i></button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create Modal -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title">New Location</h2>
+            <button class="modal-close" onclick="document.getElementById('createModal').classList.remove('open')">&times;</button>
+        </div>
+        <form asp-controller="Locations" asp-action="Create" method="post">
+            @Html.AntiForgeryToken()
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Name *</label>
+                    <input name="Name" class="form-control" required placeholder="HQ - Floor 1" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Type *</label>
+                    <select name="LocationType" class="form-control">
+                        @foreach (var t in Enum.GetValues<Core.Enums.LocationType>())
+                        { <option value="@t">@t</option> }
+                    </select>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Building</label>
+                        <input name="Building" class="form-control" placeholder="HQ" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Site</label>
+                        <input name="Site" class="form-control" placeholder="Main Campus" />
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Floor</label>
+                        <input name="Floor" class="form-control" placeholder="1" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Room</label>
+                        <input name="Room" class="form-control" placeholder="A101" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('createModal').classList.remove('open')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create</button>
+            </div>
+        </form>
+    </div>
+</div>

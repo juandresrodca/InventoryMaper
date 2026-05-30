@@ -1,0 +1,98 @@
+@model InventoryMapper.Core.Entities.ImportBatch
+@{
+    ViewData["Title"] = "Import Report";
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a asp-controller="Import" asp-action="Index">Import</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>Report</span>
+            </div>
+            <h1 class="page-title">Import Report</h1>
+            <p class="page-subtitle">@(Model.OriginalFileName ?? Model.FileName)</p>
+        </div>
+    </div>
+
+    <div class="stat-grid" style="margin-bottom: 24px; grid-template-columns: repeat(5, 1fr);">
+        <div class="stat-card" style="--stat-color: #388BFD;">
+            <div class="stat-label">Total Rows</div>
+            <div class="stat-value">@Model.TotalRows</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #3FB950;">
+            <div class="stat-label">Added</div>
+            <div class="stat-value" style="color: var(--accent-green);">@Model.SuccessRows</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #388BFD;">
+            <div class="stat-label">Updated</div>
+            <div class="stat-value" style="color: var(--accent-blue);">@Model.DuplicateRows</div>
+        </div>
+        <div class="stat-card" style="--stat-color: #F85149;">
+            <div class="stat-label">Errors</div>
+            <div class="stat-value" style="color: var(--accent-red);">@Model.ErrorRows</div>
+        </div>
+        <div class="stat-card" style="--stat-color: @(Model.Status == Core.Enums.ImportStatus.Completed ? "#3FB950" : "#D29922");">
+            <div class="stat-label">Status</div>
+            <div class="stat-value" style="font-size: 16px;">@Model.Status</div>
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Row</th>
+                    <th>Result</th>
+                    <th>Asset</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var record in Model.Records.OrderBy(r => r.RowNumber))
+                {
+                    <tr>
+                        <td class="text-muted">#@record.RowNumber</td>
+                        <td>
+                            @if (record.Success && record.IsDuplicate)
+                            {
+                                <span class="badge badge-active">Updated</span>
+                            }
+                            else if (record.Success)
+                            {
+                                <span class="badge badge-online">Added</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-offline">Failed</span>
+                            }
+                        </td>
+                        <td>
+                            @if (record.Asset != null)
+                            {
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@record.Asset.Id">@record.Asset.Hostname</a>
+                            }
+                            else
+                            {
+                                <span class="text-muted text-sm" style="font-family: monospace;">@(record.RawData?.Length > 60 ? record.RawData[..60] + "…" : record.RawData)</span>
+                            }
+                        </td>
+                        <td class="text-sm @(record.Success ? "text-muted" : "text-danger")">
+                            @(record.ErrorMessage ?? (record.IsDuplicate ? "Existing asset updated" : "New asset created"))
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="flex gap-2 mt-4">
+        <a asp-controller="Import" asp-action="Index" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Import
+        </a>
+        <a asp-controller="Assets" asp-action="Index" class="btn btn-primary">
+            <i class="fas fa-server"></i> View Assets
+        </a>
+    </div>
+</div>

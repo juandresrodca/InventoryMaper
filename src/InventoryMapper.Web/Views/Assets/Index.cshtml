@@ -1,0 +1,188 @@
+@model InventoryMapper.Core.DTOs.PagedResult<InventoryMapper.Core.Entities.Asset>
+@using InventoryMapper.Core.DTOs
+@{
+    ViewData["Title"] = "Assets";
+    var filter = ViewBag.Filter as AssetFilterDto ?? new AssetFilterDto();
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Asset Inventory</h1>
+            <p class="page-subtitle">@Model.TotalCount total asset(s)</p>
+        </div>
+        <div class="flex gap-2">
+            <a asp-controller="Import" asp-action="Index" class="btn btn-secondary btn-sm">
+                <i class="fas fa-file-import"></i> Import
+            </a>
+            <a asp-controller="Assets" asp-action="Create" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus"></i> New Asset
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <form method="get" asp-controller="Assets" asp-action="Index" style="margin-bottom: 16px;">
+        <div class="card">
+            <div class="card-body" style="padding: 14px 18px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <input class="form-control" name="Search" value="@filter.Search" placeholder="Search hostname, IP, user..." />
+                    </div>
+                    <div style="min-width: 150px;">
+                        <select class="form-control" name="AssetType">
+                            <option value="">All Types</option>
+                            @foreach (var t in (ViewBag.AssetTypes as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)!)
+                            {
+                                <option value="@t.Value" selected="@(t.Value == filter.AssetType?.ToString())">@t.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div style="min-width: 130px;">
+                        <select class="form-control" name="Status">
+                            <option value="">All Statuses</option>
+                            @foreach (var s in (ViewBag.Statuses as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)!)
+                            {
+                                <option value="@s.Value" selected="@(s.Value == filter.Status?.ToString())">@s.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div style="min-width: 130px;">
+                        <select class="form-control" name="OnlineState">
+                            <option value="">All States</option>
+                            @foreach (var o in (ViewBag.OnlineStates as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)!)
+                            {
+                                <option value="@o.Value" selected="@(o.Value == filter.OnlineState?.ToString())">@o.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> Filter</button>
+                    <a asp-controller="Assets" asp-action="Index" class="btn btn-secondary btn-sm">Clear</a>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- Table -->
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>State</th>
+                    <th>Hostname</th>
+                    <th>IP Address</th>
+                    <th>Type</th>
+                    <th>OS</th>
+                    <th>Location</th>
+                    <th>User</th>
+                    <th>Status</th>
+                    <th>Last Check-In</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var asset in Model.Items)
+                {
+                    var stateClass = asset.OnlineState.ToString().ToLower();
+                    <tr>
+                        <td>
+                            <span class="dot dot-@stateClass" title="@asset.OnlineState"></span>
+                        </td>
+                        <td>
+                            <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id"
+                               style="font-weight: 500;">@asset.Hostname</a>
+                            @if (asset.Tags.Any())
+                            {
+                                <div class="tag-list" style="margin-top: 3px;">
+                                    @foreach (var tag in asset.Tags.Take(2))
+                                    {
+                                        <span class="tag">@tag.Key@(tag.Value != null ? $":{tag.Value}" : "")</span>
+                                    }
+                                </div>
+                            }
+                        </td>
+                        <td class="text-sm">@(asset.IpAddress ?? "—")</td>
+                        <td>@GetAssetTypeIcon(asset.AssetType) <span class="text-sm">@asset.AssetType</span></td>
+                        <td class="text-sm text-muted">@(asset.OperatingSystem ?? "—")</td>
+                        <td class="text-sm text-muted">@(asset.Location?.Name ?? "—")</td>
+                        <td class="text-sm">@(asset.AssignedUser ?? "—")</td>
+                        <td><span class="badge badge-@asset.Status.ToString().ToLower()">@asset.Status</span></td>
+                        <td class="text-sm text-muted">
+                            @(asset.LastCheckIn.HasValue
+                                ? asset.LastCheckIn.Value.ToLocalTime().ToString("MMM d HH:mm")
+                                : "Never")
+                        </td>
+                        <td>
+                            <div class="flex gap-2">
+                                <a asp-controller="Assets" asp-action="Edit" asp-route-id="@asset.Id"
+                                   class="btn btn-secondary btn-sm" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <form asp-controller="Assets" asp-action="Delete" asp-route-id="@asset.Id"
+                                      method="post" onsubmit="return confirm('Delete @asset.Hostname?')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-danger btn-sm" title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Items.Any())
+                {
+                    <tr>
+                        <td colspan="10">
+                            <div class="empty-state">
+                                <div class="empty-icon"><i class="fas fa-server"></i></div>
+                                <div class="empty-title">No Assets Found</div>
+                                <div class="text-sm">Try adjusting filters or <a asp-controller="Assets" asp-action="Create">add a new asset</a></div>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        @if (Model.TotalPages > 1)
+        {
+            <div class="pagination">
+                @if (Model.HasPrevious)
+                {
+                    <a asp-controller="Assets" asp-action="Index"
+                       asp-all-route-data="@(new Dictionary<string,string> { ["Page"] = (filter.Page - 1).ToString(), ["Search"] = filter.Search ?? "" })"
+                       class="page-item">&laquo;</a>
+                }
+                @for (int i = Math.Max(1, filter.Page - 2); i <= Math.Min(Model.TotalPages, filter.Page + 2); i++)
+                {
+                    <a asp-controller="Assets" asp-action="Index"
+                       asp-all-route-data="@(new Dictionary<string,string> { ["Page"] = i.ToString(), ["Search"] = filter.Search ?? "" })"
+                       class="page-item @(i == filter.Page ? "active" : "")">@i</a>
+                }
+                @if (Model.HasNext)
+                {
+                    <a asp-controller="Assets" asp-action="Index"
+                       asp-all-route-data="@(new Dictionary<string,string> { ["Page"] = (filter.Page + 1).ToString(), ["Search"] = filter.Search ?? "" })"
+                       class="page-item">&raquo;</a>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@functions {
+    string GetAssetTypeIcon(InventoryMapper.Core.Enums.AssetType type) => type switch
+    {
+        InventoryMapper.Core.Enums.AssetType.Server => "🖥️",
+        InventoryMapper.Core.Enums.AssetType.VirtualMachine => "⚙️",
+        InventoryMapper.Core.Enums.AssetType.NetworkSwitch => "🔀",
+        InventoryMapper.Core.Enums.AssetType.Firewall => "🛡️",
+        InventoryMapper.Core.Enums.AssetType.Router => "📡",
+        InventoryMapper.Core.Enums.AssetType.PhysicalDevice => "💻",
+        InventoryMapper.Core.Enums.AssetType.Printer => "🖨️",
+        InventoryMapper.Core.Enums.AssetType.Container => "📦",
+        InventoryMapper.Core.Enums.AssetType.CloudInstance => "☁️",
+        _ => "📟"
+    };
+}
