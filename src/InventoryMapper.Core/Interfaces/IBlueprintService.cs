@@ -13,6 +13,8 @@ public interface IBlueprintService
     Task SaveBlueprintLayoutAsync(Guid id, BlueprintLayoutDto layout, CancellationToken ct = default);
     Task<BlueprintAnnotation> AddAnnotationAsync(Guid blueprintId, CreateAnnotationDto dto, CancellationToken ct = default);
     Task<BlueprintZone> AddZoneAsync(Guid blueprintId, CreateZoneDto dto, CancellationToken ct = default);
+    Task UpdateBlueprintAsync(Guid id, UpdateBlueprintDto dto, CancellationToken ct = default);
     Task DeleteAnnotationAsync(Guid annotationId, CancellationToken ct = default);
     Task DeleteZoneAsync(Guid zoneId, CancellationToken ct = default);
+    Task RenameZoneAsync(Guid zoneId, string name, CancellationToken ct = default);
 }

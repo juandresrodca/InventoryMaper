@@ -152,6 +152,10 @@
                 <i class="fas fa-th"></i> Grid
             </button>
             <div style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
+                <button id="btn-move" class="toolbar-btn" style="display:none; color: var(--accent-blue); border-color: var(--accent-blue);"
+                        onclick="showMigrationDialog()" title="Move selected assets to another blueprint">
+                    <i class="fas fa-exchange-alt"></i> Move to Blueprint
+                </button>
                 <span class="text-sm text-muted">@Model.PlacedAssets.Count placed</span>
                 <a asp-controller="Blueprints" asp-action="Index" class="btn btn-secondary btn-sm">
                     <i class="fas fa-arrow-left"></i> Back
@@ -169,9 +173,15 @@
 <div class="canvas-tooltip" id="tooltip"></div>
 
 <!-- Context Menu -->
-<div id="ctxMenu" style="position: fixed; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 4px 0; z-index: 600; display: none; min-width: 180px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+<div id="ctxMenu" style="position: fixed; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 4px 0; z-index: 600; display: none; min-width: 190px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+    <!-- Asset actions -->
     <div id="ctxViewDetails" class="ctx-item" onclick="ctxViewDetails()"><i class="fas fa-eye"></i> View Details</div>
     <div id="ctxRemove" class="ctx-item ctx-danger" onclick="ctxRemoveAsset()"><i class="fas fa-unlink"></i> Remove from Blueprint</div>
+    <!-- Zone actions -->
+    <div id="ctxRenameZone" class="ctx-item" onclick="ctxRenameZoneAction()"><i class="fas fa-edit"></i> Rename Zone</div>
+    <div id="ctxDeleteZone" class="ctx-item ctx-danger" onclick="ctxDeleteZoneAction()"><i class="fas fa-trash"></i> Delete Zone</div>
+    <!-- Label actions -->
+    <div id="ctxDeleteLabel" class="ctx-item ctx-danger" onclick="ctxDeleteLabelAction()"><i class="fas fa-trash"></i> Delete Label</div>
     <div class="ctx-sep"></div>
     <div class="ctx-item" onclick="closeCtxMenu()"><i class="fas fa-times"></i> Cancel</div>
 </div>
@@ -182,6 +192,28 @@
 .ctx-danger:hover { color: var(--accent-red); }
 .ctx-sep { height: 1px; background: var(--border-color); margin: 4px 0; }
 </style>
+
+<!-- Migration dialog -->
+<div id="migrationDialog" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+     background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px;
+     padding:24px; z-index:700; min-width:320px; max-width:420px;
+     box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+    <div style="font-size:15px; font-weight:600; margin-bottom:4px;">
+        <i class="fas fa-exchange-alt" style="color:var(--accent-blue); margin-right:6px;"></i> Move to Another Blueprint
+    </div>
+    <div class="text-sm text-muted" style="margin-bottom:14px;">
+        Shift+click assets on the canvas to add more to the selection.
+    </div>
+    <div id="migrationList" style="border:1px solid var(--border-color); border-radius:6px; overflow:hidden; margin-bottom:16px; max-height:220px; overflow-y:auto;"></div>
+    <div class="flex gap-2">
+        <button class="btn btn-primary" style="flex:1;" onclick="proceedMigration()">
+            <i class="fas fa-arrow-right"></i> Select Destination
+        </button>
+        <button class="btn btn-secondary" onclick="closeMigrationDialog()">Cancel</button>
+    </div>
+</div>
+<div id="migrationOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:699;"
+     onclick="closeMigrationDialog()"></div>
 
 @section Scripts {
 <script>
@@ -209,10 +241,12 @@ let isDragging = false, dragStartX = 0, dragStartY = 0, dragViewX = 0, dragViewY
 let currentTool = 'select';
 let showGrid = false;
 let objects = []; // {id, type:'asset'|'zone'|'label', ...props}
-let selected = null, hoveredId = null;
+let selectedIds = new Set(), hoveredId = null;
 let dragObject = null, dragObjStartX = 0, dragObjStartY = 0, dragObjMouseX = 0, dragObjMouseY = 0;
+let resizing = null; // { obj, startW, startH, startMX, startMY }
 let drawingZone = null;
 let ctxTarget = null;
+const HANDLE_PX = 9; // resize handle half-size in screen pixels
 
 // Load layout
 async function loadLayout() {
@@ -314,7 +348,7 @@ function drawGrid() {
 }
 
 function drawObject(obj) {
-    const isSelected = selected === obj.id;
+    const isSelected = selectedIds.has(obj.id);
     const isHovered = hoveredId === obj.id;
 
     if (obj.type === 'zone') {
@@ -384,6 +418,16 @@ function drawObject(obj) {
             const shortName = obj.hostname.length > 12 ? obj.hostname.substring(0, 11) + '…' : obj.hostname;
             ctx2d.fillText(shortName, obj.x + boxW/2, obj.y + boxH - 6/scale);
             ctx2d.textAlign = 'left';
+        }
+
+        // Resize handle at bottom-right (only when this is the sole selected object)
+        if (isSelected && selectedIds.size === 1) {
+            const hs = HANDLE_PX / scale;
+            ctx2d.fillStyle = '#388BFD';
+            ctx2d.fillRect(obj.x + boxW - hs/2, obj.y + boxH - hs/2, hs, hs);
+            ctx2d.strokeStyle = '#fff';
+            ctx2d.lineWidth = 1.5 / scale;
+            ctx2d.strokeRect(obj.x + boxW - hs/2, obj.y + boxH - hs/2, hs, hs);
         }
     }
 }
@@ -456,18 +500,37 @@ function onMouseDown(e) {
     }
 
     if (currentTool === 'select') {
+        // Check resize handle first (only when exactly one asset is selected)
+        if (selectedIds.size === 1) {
+            const soloId = [...selectedIds][0];
+            const soloObj = objects.find(o => o.id === soloId);
+            if (soloObj && soloObj.type === 'asset') {
+                const hs = HANDLE_PX / scale;
+                const hx = soloObj.x + soloObj.w, hy = soloObj.y + soloObj.h;
+                if (Math.abs(w.x - hx) <= hs && Math.abs(w.y - hy) <= hs) {
+                    resizing = { obj: soloObj, startW: soloObj.w, startH: soloObj.h, startMX: w.x, startMY: w.y };
+                    return;
+                }
+            }
+        }
         const hit = hitTest(w.x, w.y);
         if (hit) {
-            selected = hit.id;
+            if (e.shiftKey) {
+                if (selectedIds.has(hit.id)) selectedIds.delete(hit.id);
+                else selectedIds.add(hit.id);
+            } else {
+                selectedIds = new Set([hit.id]);
+            }
             dragObject = hit;
             dragObjStartX = hit.x; dragObjStartY = hit.y;
             dragObjMouseX = w.x; dragObjMouseY = w.y;
-        } else {
-            selected = null;
+        } else if (!e.shiftKey) {
+            selectedIds.clear();
             isDragging = true;
             dragStartX = e.clientX; dragStartY = e.clientY;
             dragViewX = viewX; dragViewY = viewY;
         }
+        updateMoveButton();
         redraw();
     }
 }
@@ -477,6 +540,15 @@ function onMouseMove(e) {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     const w = canvasToWorld(mx, my);
+
+    if (resizing) {
+        const dx = w.x - resizing.startMX;
+        const dy = w.y - resizing.startMY;
+        resizing.obj.w = Math.max(24, resizing.startW + dx);
+        resizing.obj.h = Math.max(24, resizing.startH + dy);
+        redraw();
+        return;
+    }
 
     if (isDragging) {
         viewX = dragViewX + (e.clientX - dragStartX);
@@ -521,6 +593,13 @@ function onMouseMove(e) {
 }
 
 function onMouseUp(e) {
+    if (resizing) {
+        savePlacementUpdate(resizing.obj);
+        resizing = null;
+        canvas.style.cursor = '';
+        redraw();
+        return;
+    }
     if (isDrawingZone && drawingZone && (Math.abs(drawingZone.w) > 20 || Math.abs(drawingZone.h) > 20)) {
         const x = drawingZone.w > 0 ? drawingZone.x : drawingZone.x + drawingZone.w;
         const y = drawingZone.h > 0 ? drawingZone.y : drawingZone.y + drawingZone.h;
@@ -561,12 +640,23 @@ function onContextMenu(e) {
     const hit = hitTest(w.x, w.y);
     if (hit) {
         ctxTarget = hit;
-        selected = hit.id;
+        if (!selectedIds.has(hit.id)) selectedIds = new Set([hit.id]);
+        const isAsset = hit.type === 'asset';
+        const isZone = hit.type === 'zone';
+        const isLabel = hit.type === 'label';
+        document.getElementById('ctxViewDetails').style.display = isAsset ? 'flex' : 'none';
+        document.getElementById('ctxRemove').style.display = isAsset ? 'flex' : 'none';
+        document.getElementById('ctxRenameZone').style.display = isZone ? 'flex' : 'none';
+        document.getElementById('ctxDeleteZone').style.display = isZone ? 'flex' : 'none';
+        document.getElementById('ctxDeleteLabel').style.display = isLabel ? 'flex' : 'none';
         const menu = document.getElementById('ctxMenu');
+        // Keep menu within viewport
+        const menuW = 190, menuH = 160;
+        const left = Math.min(e.clientX, window.innerWidth - menuW - 8);
+        const top = Math.min(e.clientY, window.innerHeight - menuH - 8);
+        menu.style.left = left + 'px';
+        menu.style.top = top + 'px';
         menu.style.display = 'block';
-        menu.style.left = e.clientX + 'px';
-        menu.style.top = e.clientY + 'px';
-        document.getElementById('ctxViewDetails').style.display = hit.type === 'asset' ? 'flex' : 'none';
         redraw();
     }
 }
@@ -590,11 +680,50 @@ document.addEventListener('click', e => {
 
 function closeCtxMenu() { document.getElementById('ctxMenu').style.display = 'none'; ctxTarget = null; }
 function ctxViewDetails() { if (ctxTarget) window.location.href = `/Assets/Details/${ctxTarget.id}`; closeCtxMenu(); }
+
 async function ctxRemoveAsset() {
     if (!ctxTarget || ctxTarget.type !== 'asset') return closeCtxMenu();
     await fetch(`/Blueprints/RemoveAsset?assetId=${ctxTarget.id}`, { method: 'POST', headers: {'RequestVerificationToken': getAntiForgeryToken()} });
     objects = objects.filter(o => o.id !== ctxTarget.id);
     closeCtxMenu(); redraw();
+}
+
+async function ctxRenameZoneAction() {
+    if (!ctxTarget || ctxTarget.type !== 'zone') return closeCtxMenu();
+    const newName = prompt('Rename zone:', ctxTarget.name);
+    if (newName === null || newName.trim() === '') return closeCtxMenu();
+    const trimmed = newName.trim();
+    await fetch(`/Blueprints/RenameZone/${ctxTarget.id}?name=${encodeURIComponent(trimmed)}`, {
+        method: 'POST',
+        headers: { 'RequestVerificationToken': getAntiForgeryToken() }
+    });
+    const obj = objects.find(o => o.id === ctxTarget.id);
+    if (obj) obj.name = trimmed;
+    closeCtxMenu(); redraw();
+}
+
+async function ctxDeleteZoneAction() {
+    if (!ctxTarget || ctxTarget.type !== 'zone') return closeCtxMenu();
+    await deleteObjectFromServer(ctxTarget);
+    objects = objects.filter(o => o.id !== ctxTarget.id);
+    selected = null;
+    closeCtxMenu(); redraw();
+}
+
+async function ctxDeleteLabelAction() {
+    if (!ctxTarget || ctxTarget.type !== 'label') return closeCtxMenu();
+    await deleteObjectFromServer(ctxTarget);
+    objects = objects.filter(o => o.id !== ctxTarget.id);
+    selected = null;
+    closeCtxMenu(); redraw();
+}
+
+async function deleteObjectFromServer(obj) {
+    if (obj.type === 'zone') {
+        await fetch(`/Blueprints/DeleteZone/${obj.id}`, { method: 'DELETE', headers: { 'RequestVerificationToken': getAntiForgeryToken() } });
+    } else if (obj.type === 'label') {
+        await fetch(`/Blueprints/DeleteAnnotation/${obj.id}`, { method: 'DELETE', headers: { 'RequestVerificationToken': getAntiForgeryToken() } });
+    }
 }
 
 // Drag-drop from sidebar
@@ -706,7 +835,7 @@ function toggleGrid() {
 }
 
 function snapToGrid(v) { return showGrid ? Math.round(v / 40) * 40 : v; }
-function selectAsset(id) { selected = id; redraw(); }
+function selectAsset(id) { selectedIds = new Set([id]); updateMoveButton(); redraw(); }
 
 function getAntiForgeryToken() {
     return document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
@@ -721,13 +850,56 @@ function showToast(msg, type) {
     setTimeout(() => t.remove(), 3000);
 }
 
+// Move-to-blueprint helpers
+function updateMoveButton() {
+    const assetCount = [...selectedIds].filter(id => objects.find(o => o.id === id && o.type === 'asset')).length;
+    const btn = document.getElementById('btn-move');
+    btn.style.display = assetCount > 0 ? 'flex' : 'none';
+    if (assetCount > 0) btn.innerHTML = `<i class="fas fa-exchange-alt"></i>&nbsp;Move ${assetCount} asset(s)`;
+}
+
+function showMigrationDialog() {
+    const assetIds = [...selectedIds].filter(id => objects.find(o => o.id === id && o.type === 'asset'));
+    if (!assetIds.length) return;
+    const list = document.getElementById('migrationList');
+    list.innerHTML = assetIds.map(id => {
+        const o = objects.find(x => x.id === id);
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border-color);font-size:13px;">
+            <span class="dot dot-${(o.state||'unknown').toLowerCase()}"></span>
+            <span style="flex:1;font-weight:500;">${o.hostname}</span>
+            <span class="text-sm text-muted">${o.assetType}</span>
+        </div>`;
+    }).join('');
+    document.getElementById('migrationDialog').style.display = 'block';
+    document.getElementById('migrationOverlay').style.display = 'block';
+}
+
+function closeMigrationDialog() {
+    document.getElementById('migrationDialog').style.display = 'none';
+    document.getElementById('migrationOverlay').style.display = 'none';
+}
+
+function proceedMigration() {
+    const assetIds = [...selectedIds].filter(id => objects.find(o => o.id === id && o.type === 'asset'));
+    if (!assetIds.length) return;
+    window.location.href = `/Blueprints/MigratePlan?from=${BLUEPRINT_ID}&assets=${assetIds.join(',')}`;
+}
+
 // Keyboard shortcuts
 document.addEventListener('keydown', e => {
     if (e.key === 'v' || e.key === 'V') setTool('select', document.getElementById('btn-select'));
     if (e.key === 'p' || e.key === 'P') setTool('pan', document.getElementById('btn-pan'));
-    if (e.key === 'Delete' && selected) {
-        const idx = objects.findIndex(o => o.id === selected);
-        if (idx !== -1 && objects[idx].type !== 'asset') { objects.splice(idx, 1); selected = null; redraw(); }
+    if (e.key === 'Delete' && selectedIds.size > 0) {
+        for (const id of [...selectedIds]) {
+            const idx = objects.findIndex(o => o.id === id);
+            if (idx !== -1 && objects[idx].type !== 'asset') {
+                deleteObjectFromServer(objects[idx]);
+                objects.splice(idx, 1);
+            }
+        }
+        selectedIds.clear();
+        updateMoveButton();
+        redraw();
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveLayout(); }
 });

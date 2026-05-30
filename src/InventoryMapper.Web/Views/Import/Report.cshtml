@@ -33,7 +33,7 @@
             <div class="stat-label">Errors</div>
             <div class="stat-value" style="color: var(--accent-red);">@Model.ErrorRows</div>
         </div>
-        <div class="stat-card" style="--stat-color: @(Model.Status == Core.Enums.ImportStatus.Completed ? "#3FB950" : "#D29922");">
+        <div class="stat-card" style="--stat-color: @(Model.Status == ImportStatus.Completed ? "#3FB950" : "#D29922");">
             <div class="stat-label">Status</div>
             <div class="stat-value" style="font-size: 16px;">@Model.Status</div>
         </div>

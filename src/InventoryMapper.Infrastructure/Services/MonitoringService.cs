@@ -16,8 +16,16 @@ public class MonitoringService(ApplicationDbContext db, ILogger<MonitoringServic
             .Where(a => a.IsMonitored && !string.IsNullOrEmpty(a.IpAddress))
             .ToListAsync(ct);
 
-        var tasks = assets.Select(asset => PingAndUpdateAsync(asset, ct));
-        await Task.WhenAll(tasks);
+        // Ping all assets concurrently (pure network I/O — no DbContext involvement)
+        var pingResults = await Task.WhenAll(assets.Select(a => PingOnlyAsync(a, ct)));
+
+        // Write results sequentially — DbContext is not thread-safe
+        for (int i = 0; i < assets.Count; i++)
+        {
+            var (state, responseMs) = pingResults[i];
+            await UpdateStateAsync(assets[i], state, MonitoringMethod.Ping, responseMs, ct);
+        }
+
         logger.LogInformation("Ping sweep complete. Checked {Count} assets.", assets.Count);
     }
 
@@ -25,29 +33,25 @@ public class MonitoringService(ApplicationDbContext db, ILogger<MonitoringServic
     {
         var asset = await db.Assets.FindAsync([assetId], ct);
         if (asset == null) return false;
-        return await PingAndUpdateAsync(asset, ct);
+        var (state, responseMs) = await PingOnlyAsync(asset, ct);
+        await UpdateStateAsync(asset, state, MonitoringMethod.Ping, responseMs, ct);
+        return state == OnlineState.Online;
     }
 
-    private async Task<bool> PingAndUpdateAsync(Asset asset, CancellationToken ct)
+    private async Task<(OnlineState State, double? ResponseMs)> PingOnlyAsync(Asset asset, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(asset.IpAddress)) return false;
-
+        if (string.IsNullOrEmpty(asset.IpAddress)) return (OnlineState.Unknown, null);
         try
         {
             using var ping = new Ping();
             var reply = await ping.SendPingAsync(asset.IpAddress, 2000);
             var success = reply.Status == IPStatus.Success;
-            var state = success ? OnlineState.Online : OnlineState.Offline;
-            var responseMs = success ? (double?)reply.RoundtripTime : null;
-
-            await UpdateStateAsync(asset, state, MonitoringMethod.Ping, responseMs, ct);
-            return success;
+            return (success ? OnlineState.Online : OnlineState.Offline, success ? (double?)reply.RoundtripTime : null);
         }
         catch (Exception ex)
         {
             logger.LogWarning("Ping failed for {Hostname} ({IP}): {Msg}", asset.Hostname, asset.IpAddress, ex.Message);
-            await UpdateStateAsync(asset, OnlineState.Unreachable, MonitoringMethod.Ping, null, ct);
-            return false;
+            return (OnlineState.Unreachable, null);
         }
     }
 

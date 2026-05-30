@@ -1,0 +1,68 @@
+@model InventoryMapper.Core.DTOs.UpdateBlueprintDto
+@{
+    ViewData["Title"] = "Edit Blueprint";
+    var blueprintId = ViewBag.BlueprintId as Guid?;
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a asp-controller="Blueprints" asp-action="Index">Blueprints</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>@ViewBag.BlueprintName</span>
+                <span class="breadcrumb-sep">/</span>
+                <span>Edit</span>
+            </div>
+            <h1 class="page-title">Edit Blueprint</h1>
+        </div>
+    </div>
+
+    <form asp-controller="Blueprints" asp-action="Edit" asp-route-id="@blueprintId"
+          method="post" style="max-width: 700px;">
+        @Html.AntiForgeryToken()
+
+        <div class="card" style="margin-bottom: 16px;">
+            <div class="card-header"><span class="card-title">Blueprint Details</span></div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">Name *</label>
+                    <input asp-for="Name" class="form-control" required />
+                    <span asp-validation-for="Name" class="text-danger text-sm"></span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea asp-for="Description" class="form-control" rows="2"
+                              placeholder="Office layout, server room, datacenter map..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Location</label>
+                    <select asp-for="LocationId" class="form-control">
+                        <option value="">— No location —</option>
+                        @foreach (var item in (ViewBag.Locations as Microsoft.AspNetCore.Mvc.Rendering.SelectList)!)
+                        { <option value="@item.Value" selected="@item.Selected">@item.Text</option> }
+                    </select>
+                    <div class="text-sm text-muted" style="margin-top: 4px;">A location can have multiple blueprints (e.g. one per floor)</div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Canvas Width (px)</label>
+                        <input asp-for="CanvasWidth" class="form-control" type="number" min="800" max="8000" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Canvas Height (px)</label>
+                        <input asp-for="CanvasHeight" class="form-control" type="number" min="600" max="8000" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Changes</button>
+            <a asp-controller="Blueprints" asp-action="Canvas" asp-route-id="@blueprintId" class="btn btn-secondary">
+                <i class="fas fa-map"></i> Open Canvas
+            </a>
+            <a asp-controller="Blueprints" asp-action="Index" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>

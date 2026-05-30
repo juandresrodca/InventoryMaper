@@ -1,4 +1,5 @@
 using InventoryMapper.Core.DTOs;
+using InventoryMapper.Core.Entities;
 using InventoryMapper.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -50,12 +51,96 @@ public class BlueprintsController(IBlueprintService blueprintService, IRepositor
         return RedirectToAction(nameof(Canvas), new { id = blueprint.Id });
     }
 
+    [HttpGet]
+    public async Task<IActionResult> Edit(Guid id)
+    {
+        var bp = await blueprintService.GetBlueprintByIdAsync(id);
+        if (bp == null) return NotFound();
+        var locations = await locationRepo.GetAllAsync();
+        ViewBag.Locations = new SelectList(locations, "Id", "Name", bp.LocationId);
+        ViewBag.BlueprintId = id;
+        ViewBag.BlueprintName = bp.Name;
+        return View(new UpdateBlueprintDto
+        {
+            Name = bp.Name,
+            Description = bp.Description,
+            LocationId = bp.LocationId,
+            CanvasWidth = bp.CanvasWidth,
+            CanvasHeight = bp.CanvasHeight
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Edit(Guid id, [Bind(Prefix = "")] UpdateBlueprintDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            var locs = await locationRepo.GetAllAsync();
+            ViewBag.Locations = new SelectList(locs, "Id", "Name", dto.LocationId);
+            ViewBag.BlueprintId = id;
+            ViewBag.BlueprintName = dto.Name;
+            return View(dto);
+        }
+        await blueprintService.UpdateBlueprintAsync(id, dto);
+        TempData["Success"] = $"Blueprint '{dto.Name}' updated.";
+        return RedirectToAction(nameof(Index));
+    }
+
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(Guid id)
     {
         await blueprintService.DeleteBlueprintAsync(id);
         TempData["Success"] = "Blueprint deleted.";
         return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> RenameZone(Guid id, [FromQuery] string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return BadRequest("Name required.");
+        await blueprintService.RenameZoneAsync(id, name);
+        return Ok();
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> MigratePlan(Guid from, string assets)
+    {
+        var sourceBp = await blueprintService.GetBlueprintByIdAsync(from);
+        if (sourceBp == null) return NotFound();
+
+        var assetIds = assets.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => Guid.TryParse(s, out var g) ? (Guid?)g : null)
+            .Where(g => g.HasValue).Select(g => g!.Value).ToArray();
+
+        var assetsToMove = new List<Asset>();
+        foreach (var id in assetIds)
+        {
+            var asset = await assetService.GetAssetByIdAsync(id);
+            if (asset != null) assetsToMove.Add(asset);
+        }
+
+        var allBlueprints = await blueprintService.GetAllBlueprintsAsync();
+        ViewBag.SourceBlueprint = sourceBp;
+        ViewBag.AssetsToMove = assetsToMove;
+        ViewBag.Destinations = allBlueprints.Where(b => b.Id != from).ToList();
+        ViewBag.AssetIds = assets;
+        ViewBag.FromId = from;
+        return View();
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExecuteMigration(Guid from, Guid to, string assets)
+    {
+        var assetIds = assets.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => Guid.TryParse(s, out var g) ? (Guid?)g : null)
+            .Where(g => g.HasValue).Select(g => g!.Value).ToArray();
+
+        await assetService.MigrateAssetsAsync(assetIds, to);
+
+        var sourceBp = await blueprintService.GetBlueprintByIdAsync(from);
+        var destBp   = await blueprintService.GetBlueprintByIdAsync(to);
+        TempData["Success"] = $"Moved {assetIds.Length} asset(s) from '{sourceBp?.Name}' to '{destBp?.Name}'.";
+        return RedirectToAction(nameof(Canvas), new { id = to });
     }
 
     // API-style endpoints used by the canvas JS engine

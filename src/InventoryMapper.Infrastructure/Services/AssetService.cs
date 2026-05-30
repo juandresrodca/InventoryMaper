@@ -10,6 +10,10 @@ namespace InventoryMapper.Infrastructure.Services;
 
 public class AssetService(ApplicationDbContext db, ILogger<AssetService> logger) : IAssetService
 {
+    // Policy configuration (In production, these would come from IConfiguration)
+    private const string CurrentTargetVersion = "1.2.0";
+    private const int UpdateIntervalDays = 2; // Set to 60 for 2-month rollout, 2 for testing
+
     public async Task<PagedResult<Asset>> GetAssetsAsync(AssetFilterDto filter, CancellationToken ct = default)
     {
         var query = db.Assets
@@ -177,8 +181,8 @@ public class AssetService(ApplicationDbContext db, ILogger<AssetService> logger)
 
         var history = await db.MonitoringRecords
             .Where(m => m.CheckedAt >= DateTime.UtcNow.AddHours(-24))
-            .GroupBy(m => new { Hour = m.CheckedAt.Date.AddHours(m.CheckedAt.Hour) })
-            .Select(g => new { Hour = g.Key.Hour, Online = g.Count(x => x.State == OnlineState.Online), Offline = g.Count(x => x.State == OnlineState.Offline) })
+            .GroupBy(m => m.CheckedAt.Hour)
+            .Select(g => new { Hour = g.Key, Online = g.Count(x => x.State == OnlineState.Online), Offline = g.Count(x => x.State == OnlineState.Offline) })
             .ToListAsync(ct);
 
         return new DashboardStatsDto
@@ -200,6 +204,29 @@ public class AssetService(ApplicationDbContext db, ILogger<AssetService> logger)
             RecentAlerts = recentAlerts.Select(a => new AlertSummaryDto(a.Title, a.Severity.ToString(), a.CreatedAt, a.Asset?.Hostname)).ToList(),
             OnlineHistory = history.Select(h => new OnlineHistoryPointDto(DateTime.UtcNow.Date.AddHours(h.Hour), h.Online, h.Offline)).ToList()
         };
+    }
+
+    public async Task<(bool Required, string? Url, string? Version)> CheckUpdatePolicyAsync(string currentVersion, CancellationToken ct = default)
+    {
+        // Simple version comparison
+        if (currentVersion == CurrentTargetVersion) 
+            return (false, null, null);
+
+        // Retrieve the most recent global release date (mocked here or stored in DB)
+        var lastReleaseDate = DateTime.UtcNow.AddDays(-3); // Simulated: Release happened 3 days ago
+
+        // Evaluate Policy: Rollout every X days
+        bool isUpdateWindowOpen = DateTime.UtcNow >= lastReleaseDate.AddDays(UpdateIntervalDays);
+
+        if (isUpdateWindowOpen)
+        {
+            logger.LogInformation("Update policy triggered for version {Version}. Policy interval: {Interval} days.", 
+                CurrentTargetVersion, UpdateIntervalDays);
+            
+            return (true, "https://updates.yourdomain.com/agents/setup-latest.exe", CurrentTargetVersion);
+        }
+
+        return (false, null, null);
     }
 
     public async Task UpdateOnlineStateAsync(Guid id, OnlineState state, double? responseMs = null, CancellationToken ct = default)
@@ -260,6 +287,21 @@ public class AssetService(ApplicationDbContext db, ILogger<AssetService> logger)
         asset.BlueprintId = null;
         asset.BlueprintX = null;
         asset.BlueprintY = null;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task MigrateAssetsAsync(Guid[] assetIds, Guid targetBlueprintId, CancellationToken ct = default)
+    {
+        for (int i = 0; i < assetIds.Length; i++)
+        {
+            var asset = await db.Assets.FindAsync([assetIds[i]], ct);
+            if (asset == null) continue;
+            asset.BlueprintId = targetBlueprintId;
+            // Spread out in a 5-column grid so they don't stack on top of each other
+            asset.BlueprintX = (i % 5) * 70.0 + 30;
+            asset.BlueprintY = (i / 5) * 90.0 + 30;
+            asset.UpdatedAt = DateTime.UtcNow;
+        }
         await db.SaveChangesAsync(ct);
     }
 

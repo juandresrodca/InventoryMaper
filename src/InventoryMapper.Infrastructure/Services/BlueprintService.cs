@@ -3,13 +3,13 @@ using InventoryMapper.Core.Entities;
 using InventoryMapper.Core.Interfaces;
 using InventoryMapper.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 
 namespace InventoryMapper.Infrastructure.Services;
 
-public class BlueprintService(ApplicationDbContext db, IHostEnvironment env) : IBlueprintService
+public class BlueprintService(ApplicationDbContext db, IConfiguration config) : IBlueprintService
 {
-    private string StoragePath => Path.Combine(env.ContentRootPath, "wwwroot", "blueprints");
+    private string StoragePath => config["BlueprintStoragePath"] ?? Path.Combine(AppContext.BaseDirectory, "wwwroot", "blueprints");
 
     public async Task<IEnumerable<Blueprint>> GetAllBlueprintsAsync(CancellationToken ct = default)
         => await db.Blueprints
@@ -151,6 +151,19 @@ public class BlueprintService(ApplicationDbContext db, IHostEnvironment env) : I
         return zone;
     }
 
+    public async Task UpdateBlueprintAsync(Guid id, UpdateBlueprintDto dto, CancellationToken ct = default)
+    {
+        var bp = await db.Blueprints.FindAsync([id], ct)
+            ?? throw new KeyNotFoundException($"Blueprint {id} not found");
+        bp.Name = dto.Name;
+        bp.Description = dto.Description;
+        bp.LocationId = dto.LocationId;
+        bp.CanvasWidth = dto.CanvasWidth;
+        bp.CanvasHeight = dto.CanvasHeight;
+        bp.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task DeleteAnnotationAsync(Guid annotationId, CancellationToken ct = default)
     {
         var a = await db.BlueprintAnnotations.FindAsync([annotationId], ct);
@@ -161,5 +174,13 @@ public class BlueprintService(ApplicationDbContext db, IHostEnvironment env) : I
     {
         var z = await db.BlueprintZones.FindAsync([zoneId], ct);
         if (z != null) { db.BlueprintZones.Remove(z); await db.SaveChangesAsync(ct); }
+    }
+
+    public async Task RenameZoneAsync(Guid zoneId, string name, CancellationToken ct = default)
+    {
+        var z = await db.BlueprintZones.FindAsync([zoneId], ct)
+            ?? throw new KeyNotFoundException($"Zone {zoneId} not found");
+        z.Name = name;
+        await db.SaveChangesAsync(ct);
     }
 }

@@ -2,6 +2,7 @@ using InventoryMapper.Infrastructure;
 using InventoryMapper.Infrastructure.Data;
 using InventoryMapper.Web.Hubs;
 using InventoryMapper.Web.Workers;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 
@@ -17,6 +18,8 @@ try
 
     builder.Services.AddControllersWithViews();
     builder.Services.AddSignalR();
+    // Set blueprint storage path for BlueprintService
+    builder.Configuration["BlueprintStoragePath"] = Path.Combine(builder.Environment.WebRootPath, "blueprints");
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddHostedService<MonitoringWorker>();
 
@@ -37,21 +40,25 @@ try
     {
         app.UseExceptionHandler("/Home/Error");
         app.UseHsts();
+        app.UseHttpsRedirection();
     }
 
-    app.UseHttpsRedirection();
     app.UseResponseCompression();
     app.UseStaticFiles();
     app.UseRouting();
     app.UseAuthorization();
 
-    app.MapStaticAssets();
     app.MapHub<MonitoringHub>("/hubs/monitoring");
     app.MapControllerRoute(
         name: "default",
         pattern: "{controller=Dashboard}/{action=Index}/{id?}");
 
     app.Run();
+}
+catch (HostAbortedException)
+{
+    // EF Core design-time host aborts intentionally after migrations — not a real error
+    throw;
 }
 catch (Exception ex)
 {

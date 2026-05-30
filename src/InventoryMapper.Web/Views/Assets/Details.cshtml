@@ -38,7 +38,7 @@
     <!-- Active alerts banner -->
     @foreach (var alert in Model.Alerts.Where(a => !a.IsResolved))
     {
-        <div class="alert alert-@(alert.Severity == Core.Enums.AlertSeverity.Critical ? "error" : "warning")" style="margin-bottom: 12px;">
+        <div class="alert alert-@(alert.Severity == AlertSeverity.Critical ? "error" : "warning")" style="margin-bottom: 12px;">
             <i class="fas fa-exclamation-triangle"></i>
             <strong>@alert.Title</strong> — @alert.Message
         </div>

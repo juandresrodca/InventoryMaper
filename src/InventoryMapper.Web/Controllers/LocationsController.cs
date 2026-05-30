@@ -3,6 +3,7 @@ using InventoryMapper.Core.Enums;
 using InventoryMapper.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.EntityFrameworkCore;
 
 namespace InventoryMapper.Web.Controllers;
 
@@ -11,6 +12,17 @@ public class LocationsController(IRepository<Location> locationRepo) : Controlle
     [HttpGet]
     public async Task<IActionResult> Index()
         => View(await locationRepo.GetAllAsync());
+
+    [HttpGet]
+    public async Task<IActionResult> Detail(Guid id)
+    {
+        var location = await locationRepo.Query()
+            .Include(l => l.Blueprints.Where(b => !b.IsDeleted)).ThenInclude(b => b.PlacedAssets)
+            .Include(l => l.Assets.Where(a => !a.IsDeleted))
+            .FirstOrDefaultAsync(l => l.Id == id);
+        if (location == null) return NotFound();
+        return View(location);
+    }
 
     [HttpGet]
     public IActionResult Create()

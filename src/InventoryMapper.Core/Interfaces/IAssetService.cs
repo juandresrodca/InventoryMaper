@@ -16,4 +16,5 @@ public interface IAssetService
     Task<IEnumerable<Asset>> GetUnplacedAssetsAsync(CancellationToken ct = default);
     Task PlaceAssetOnBlueprintAsync(Guid assetId, Guid blueprintId, double x, double y, CancellationToken ct = default);
     Task RemoveAssetFromBlueprintAsync(Guid assetId, CancellationToken ct = default);
+    Task MigrateAssetsAsync(Guid[] assetIds, Guid targetBlueprintId, CancellationToken ct = default);
 }

@@ -1,0 +1,209 @@
+@model InventoryMapper.Core.Entities.Location
+@{
+    ViewData["Title"] = Model.Name;
+    var hasBluprints = Model.Blueprints.Any();
+}
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a asp-controller="Locations" asp-action="Index">Locations</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>@Model.Name</span>
+            </div>
+            <h1 class="page-title">@Model.Name</h1>
+            <p class="page-subtitle">
+                @{
+                    var (icon, label) = Model.LocationType switch
+                    {
+                        InventoryMapper.Core.Enums.LocationType.Physical => ("🏢", "Physical Location"),
+                        InventoryMapper.Core.Enums.LocationType.Virtual  => ("⚙️", "Virtual Space"),
+                        InventoryMapper.Core.Enums.LocationType.Cloud    => ("☁️", "Cloud Environment"),
+                        _ => ("🗂️", "Location")
+                    };
+                }
+                @icon @label
+                @if (!string.IsNullOrEmpty(Model.Building)) { <span> · @Model.Building</span> }
+                @if (!string.IsNullOrEmpty(Model.Floor))    { <span> · Floor @Model.Floor</span> }
+                @if (!string.IsNullOrEmpty(Model.Room))     { <span> · @Model.Room</span> }
+            </p>
+        </div>
+        <div class="flex gap-2">
+            <a asp-controller="Blueprints" asp-action="Create"
+               class="btn btn-primary">
+                <i class="fas fa-upload"></i> Add Blueprint
+            </a>
+            <a asp-controller="Locations" asp-action="Index" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+        </div>
+    </div>
+
+    @if (hasBluprints)
+    {
+        <!-- Stats bar -->
+        <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 28px;">
+            <div class="stat-card" style="--stat-color: #388BFD;">
+                <div class="stat-label">Blueprints</div>
+                <div class="stat-value">@Model.Blueprints.Count</div>
+                <div class="stat-sub">Floor plans</div>
+            </div>
+            <div class="stat-card" style="--stat-color: #3FB950;">
+                <div class="stat-label">Total Assets</div>
+                <div class="stat-value">@Model.Assets.Count</div>
+                <div class="stat-sub">At this location</div>
+            </div>
+            <div class="stat-card" style="--stat-color: #8B5CF6;">
+                <div class="stat-label">Placed</div>
+                <div class="stat-value">@Model.Blueprints.Sum(b => b.PlacedAssets.Count)</div>
+                <div class="stat-sub">On blueprints</div>
+            </div>
+            <div class="stat-card" style="--stat-color: #F59E0B;">
+                <div class="stat-label">Unplaced</div>
+                <div class="stat-value">@(Model.Assets.Count - Model.Blueprints.Sum(b => b.PlacedAssets.Count))</div>
+                <div class="stat-sub">Not mapped yet</div>
+            </div>
+        </div>
+
+        <!-- Blueprint grid -->
+        <div class="card-header" style="margin-bottom: 12px; padding: 0;">
+            <span class="card-title" style="font-size: 15px;">
+                <i class="fas fa-map" style="color: var(--accent-blue); margin-right: 6px;"></i>
+                Blueprints at this location
+            </span>
+        </div>
+        <div class="grid-3" style="gap: 16px; margin-bottom: 32px;">
+            @foreach (var bp in Model.Blueprints.OrderBy(b => b.Name))
+            {
+                <div class="card" style="cursor: pointer; transition: transform 0.2s, border-color 0.2s;"
+                     onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent-blue)'"
+                     onmouseout="this.style.transform='';this.style.borderColor='var(--border-color)'">
+                    <div style="height: 140px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border-color); overflow: hidden; position: relative;">
+                        @if (bp.MimeType?.StartsWith("image/") == true)
+                        {
+                            <img src="@bp.FileStoragePath" alt="@bp.Name"
+                                 style="width: 100%; height: 100%; object-fit: cover; opacity: 0.7;" />
+                        }
+                        else
+                        {
+                            <div style="text-align: center; color: var(--text-muted);">
+                                <i class="fas fa-file-pdf" style="font-size: 36px;"></i>
+                                <div class="text-sm" style="margin-top: 6px;">PDF Blueprint</div>
+                            </div>
+                        }
+                        <div style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: white;">
+                            @bp.PlacedAssets.Count placed
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div style="font-weight: 600; margin-bottom: 4px;">@bp.Name</div>
+                        @if (!string.IsNullOrEmpty(bp.Description))
+                        {
+                            <div class="text-sm text-muted" style="margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@bp.Description</div>
+                        }
+                        <div class="flex gap-2">
+                            <a asp-controller="Blueprints" asp-action="Canvas" asp-route-id="@bp.Id"
+                               class="btn btn-primary btn-sm" style="flex: 1; justify-content: center;">
+                                <i class="fas fa-map"></i> Open Canvas
+                            </a>
+                            <a asp-controller="Blueprints" asp-action="Edit" asp-route-id="@bp.Id"
+                               class="btn btn-secondary btn-sm" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- No blueprints — show default asset list -->
+        <div class="card" style="margin-bottom: 24px; border: 1px dashed var(--border-color);">
+            <div class="card-body" style="display: flex; align-items: center; gap: 16px; padding: 20px 24px;">
+                <i class="fas fa-info-circle" style="font-size: 20px; color: var(--accent-blue); flex-shrink: 0;"></i>
+                <div style="flex: 1;">
+                    <div style="font-weight: 500; margin-bottom: 2px;">No blueprints assigned to this location</div>
+                    <div class="text-sm text-muted">Upload a floor plan or datacenter map to visually place these assets.</div>
+                </div>
+                <a asp-controller="Blueprints" asp-action="Create" class="btn btn-primary btn-sm">
+                    <i class="fas fa-upload"></i> Upload Blueprint
+                </a>
+            </div>
+        </div>
+    }
+
+    <!-- Assets at this location (always shown) -->
+    @if (Model.Assets.Any())
+    {
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">
+                    <i class="fas fa-server" style="color: var(--accent-blue); margin-right: 6px;"></i>
+                    Assets at @Model.Name
+                </span>
+                <span class="text-sm text-muted">@Model.Assets.Count total</span>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Hostname</th>
+                        <th>Type</th>
+                        <th>State</th>
+                        <th>IP Address</th>
+                        <th>Blueprint</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var asset in Model.Assets.OrderBy(a => a.Hostname))
+                    {
+                        <tr>
+                            <td style="font-weight: 500;">@asset.Hostname</td>
+                            <td><span class="text-sm text-muted">@asset.AssetType</span></td>
+                            <td>
+                                <span class="badge badge-@asset.OnlineState.ToString().ToLower()">
+                                    <span class="dot dot-@asset.OnlineState.ToString().ToLower()"></span>
+                                    @asset.OnlineState
+                                </span>
+                            </td>
+                            <td class="text-sm text-muted">@(asset.IpAddress ?? "—")</td>
+                            <td class="text-sm text-muted">
+                                @if (asset.BlueprintId != null)
+                                {
+                                    var bp = Model.Blueprints.FirstOrDefault(b => b.Id == asset.BlueprintId);
+                                    if (bp != null)
+                                    {
+                                        <a asp-controller="Blueprints" asp-action="Canvas" asp-route-id="@bp.Id"
+                                           style="color: var(--accent-blue); font-size: 12px;">
+                                            <i class="fas fa-map-pin"></i> @bp.Name
+                                        </a>
+                                    }
+                                    else { <span>Placed</span> }
+                                }
+                                else { <span style="color: var(--text-muted);">Unplaced</span> }
+                            </td>
+                            <td>
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.Id"
+                                   class="btn btn-secondary btn-sm">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="empty-state">
+                <div class="empty-icon"><i class="fas fa-server"></i></div>
+                <div class="empty-title">No assets at this location</div>
+                <div class="text-sm">Assign assets to this location when creating or editing them.</div>
+            </div>
+        </div>
+    }
+</div>

@@ -71,3 +71,12 @@ public class CreateZoneDto
     public double Width { get; set; } = 200;
     public double Height { get; set; } = 200;
 }
+
+public class UpdateBlueprintDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public Guid? LocationId { get; set; }
+    public double CanvasWidth { get; set; } = 1920;
+    public double CanvasHeight { get; set; } = 1080;
+}

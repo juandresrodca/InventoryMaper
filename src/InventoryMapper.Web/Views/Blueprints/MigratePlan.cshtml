@@ -1,0 +1,217 @@
+@{
+    ViewData["Title"] = "Migrate Assets";
+    var sourceBp     = ViewBag.SourceBlueprint as InventoryMapper.Core.Entities.Blueprint;
+    var assetsToMove = ViewBag.AssetsToMove   as List<InventoryMapper.Core.Entities.Asset> ?? [];
+    var destinations = ViewBag.Destinations   as List<InventoryMapper.Core.Entities.Blueprint> ?? [];
+    var assetIds     = ViewBag.AssetIds       as string ?? "";
+    var fromId       = ViewBag.FromId         is Guid g ? g : Guid.Empty;
+}
+
+<style>
+.migrate-shell {
+    display: grid;
+    grid-template-columns: 1fr 160px 1fr;
+    gap: 24px;
+    align-items: start;
+    margin-top: 8px;
+}
+.migrate-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-top: 100px;
+    gap: 20px;
+}
+.arrow-icon {
+    font-size: 48px;
+    color: var(--accent-blue);
+    animation: pulse-arrow 1.5s ease-in-out infinite;
+}
+@@keyframes pulse-arrow {
+    0%, 100% { opacity: 1; transform: translateX(0); }
+    50%       { opacity: 0.6; transform: translateX(6px); }
+}
+.asset-migrate-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+}
+.asset-migrate-row:last-child { border-bottom: none; }
+.dest-preview {
+    margin-top: 12px;
+    padding: 14px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    display: none;
+}
+</style>
+
+<div class="page-content">
+    <div class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a asp-controller="Blueprints" asp-action="Index">Blueprints</a>
+                <span class="breadcrumb-sep">/</span>
+                <a asp-controller="Blueprints" asp-action="Canvas" asp-route-id="@fromId">@sourceBp?.Name</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>Migrate Assets</span>
+            </div>
+            <h1 class="page-title">Migrate Assets Between Blueprints</h1>
+            <p class="page-subtitle">Moving @assetsToMove.Count asset(s) to a new blueprint</p>
+        </div>
+        <a asp-controller="Blueprints" asp-action="Canvas" asp-route-id="@fromId" class="btn btn-secondary">
+            <i class="fas fa-times"></i> Cancel
+        </a>
+    </div>
+
+    <form method="post" asp-controller="Blueprints" asp-action="ExecuteMigration" id="migrateForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="from"   value="@fromId" />
+        <input type="hidden" name="assets" value="@assetIds" />
+        <input type="hidden" name="to"     id="toInput" />
+
+        <div class="migrate-shell">
+
+            <!-- LEFT: Source blueprint -->
+            <div>
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 10px;">
+                    <i class="fas fa-map-marker-alt" style="color: var(--accent-red);"></i> Source Blueprint
+                </div>
+                <div class="card">
+                    @if (sourceBp?.MimeType?.StartsWith("image/") == true)
+                    {
+                        <div style="height: 140px; overflow: hidden; border-bottom: 1px solid var(--border-color);">
+                            <img src="@sourceBp.FileStoragePath" alt="@sourceBp?.Name"
+                                 style="width: 100%; height: 100%; object-fit: cover; opacity: 0.6;" />
+                        </div>
+                    }
+                    <div class="card-body">
+                        <div style="font-weight: 600; font-size: 15px; margin-bottom: 4px;">@sourceBp?.Name</div>
+                        <div class="text-sm text-muted">@(sourceBp?.Location?.Name ?? "No location")</div>
+                    </div>
+                    <div style="border-top: 1px solid var(--border-color);">
+                        <div style="padding: 8px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
+                            Assets to move (@assetsToMove.Count)
+                        </div>
+                        @foreach (var asset in assetsToMove)
+                        {
+                            <div class="asset-migrate-row">
+                                <span class="dot dot-@asset.OnlineState.ToString().ToLower()"></span>
+                                <span style="flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@asset.Hostname</span>
+                                <span class="text-sm text-muted">@asset.AssetType</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- CENTER: Arrow + action -->
+            <div class="migrate-arrow">
+                <div class="arrow-icon"><i class="fas fa-arrow-right"></i></div>
+                <button type="submit" id="moveBtn" class="btn btn-primary"
+                        style="padding: 10px 20px; font-size: 14px; white-space: nowrap; pointer-events: none; opacity: 0.4;"
+                        disabled>
+                    <i class="fas fa-exchange-alt"></i>
+                    <span id="moveBtnText">Move @assetsToMove.Count device(s)</span>
+                </button>
+                <div id="moveHint" class="text-sm text-muted" style="text-align: center; max-width: 140px;">
+                    Select a destination blueprint →
+                </div>
+            </div>
+
+            <!-- RIGHT: Destination blueprint -->
+            <div>
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 10px;">
+                    <i class="fas fa-map-marker-alt" style="color: var(--accent-green);"></i> Destination Blueprint
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Select destination</label>
+                            <select class="form-control" id="destSelect" onchange="onDestChange(this)">
+                                <option value="">— Choose a blueprint —</option>
+                                @foreach (var bp in destinations)
+                                {
+                                    <option value="@bp.Id"
+                                            data-name="@bp.Name"
+                                            data-location="@(bp.Location?.Name ?? "No location")"
+                                            data-image="@(bp.MimeType?.StartsWith("image/") == true ? bp.FileStoragePath : "")"
+                                            data-assets="@bp.PlacedAssets.Count">
+                                        @bp.Name @(bp.Location != null ? $"({bp.Location.Name})" : "")
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="dest-preview" id="destPreview">
+                        <div id="destImgWrap" style="height: 120px; overflow: hidden; border-radius: 6px; margin-bottom: 10px; background: var(--bg-secondary); display: none;">
+                            <img id="destImg" src="" alt="" style="width:100%; height:100%; object-fit:cover; opacity:0.7;" />
+                        </div>
+                        <div style="font-weight: 600; font-size: 14px;" id="destName"></div>
+                        <div class="text-sm text-muted" id="destLocation" style="margin-top: 2px;"></div>
+                        <div class="text-sm" style="margin-top: 8px; color: var(--text-muted);">
+                            Currently has <span id="destAssetCount" style="color: var(--text-primary); font-weight: 600;"></span> placed asset(s).
+                            After migration: <span id="destAfterCount" style="color: var(--accent-green); font-weight: 600;"></span> total.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function onDestChange(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    const id = opt.value;
+    const btn = document.getElementById('moveBtn');
+    const hint = document.getElementById('moveHint');
+    const preview = document.getElementById('destPreview');
+
+    if (!id) {
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        btn.style.pointerEvents = 'none';
+        preview.style.display = 'none';
+        hint.textContent = 'Select a destination blueprint →';
+        document.getElementById('toInput').value = '';
+        return;
+    }
+
+    document.getElementById('toInput').value = id;
+    document.getElementById('destName').textContent = opt.dataset.name;
+    document.getElementById('destLocation').textContent = opt.dataset.location;
+
+    const currentAssets = parseInt(opt.dataset.assets) || 0;
+    const moving = @assetsToMove.Count;
+    document.getElementById('destAssetCount').textContent = currentAssets;
+    document.getElementById('destAfterCount').textContent = currentAssets + moving;
+
+    const imgWrap = document.getElementById('destImgWrap');
+    const img = document.getElementById('destImg');
+    if (opt.dataset.image) {
+        img.src = opt.dataset.image;
+        imgWrap.style.display = 'block';
+    } else {
+        imgWrap.style.display = 'none';
+    }
+
+    preview.style.display = 'block';
+
+    document.getElementById('moveBtnText').textContent =
+        `Move ${moving} device(s) from "@sourceBp?.Name" → ${opt.dataset.name}`;
+    hint.textContent = '';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
+}
+</script>
+}

@@ -30,7 +30,7 @@
             <tbody>
                 @foreach (var loc in Model)
                 {
-                    <tr>
+                    <tr style="cursor: pointer;" ondblclick="window.location='/Locations/Detail/@loc.Id'" title="Double-click to view blueprints">
                         <td>
                             <div style="font-weight: 500;">@loc.Name</div>
                             @if (loc.IsDefault)
@@ -40,9 +40,9 @@
                             @{
                                 var (icon, color) = loc.LocationType switch
                                 {
-                                    Core.Enums.LocationType.Physical => ("🏢", "var(--accent-blue)"),
-                                    Core.Enums.LocationType.Virtual => ("⚙️", "var(--accent-purple)"),
-                                    Core.Enums.LocationType.Cloud => ("☁️", "var(--accent-green)"),
+                                    LocationType.Physical => ("🏢", "var(--accent-blue)"),
+                                    LocationType.Virtual => ("⚙️", "var(--accent-purple)"),
+                                    LocationType.Cloud => ("☁️", "var(--accent-green)"),
                                     _ => ("🗂️", "var(--text-muted)")
                                 };
                             }
@@ -53,14 +53,20 @@
                         <td class="text-sm text-muted">@(loc.VirtualEnvironment ?? loc.CloudProvider ?? "—")</td>
                         <td class="text-sm">@loc.Assets.Count</td>
                         <td>
-                            @if (!loc.IsDefault)
-                            {
-                                <form asp-controller="Locations" asp-action="Delete" asp-route-id="@loc.Id"
-                                      method="post" onsubmit="return confirm('Delete @loc.Name?')">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-trash"></i></button>
-                                </form>
-                            }
+                            <div class="flex gap-2">
+                                <a asp-controller="Locations" asp-action="Detail" asp-route-id="@loc.Id"
+                                   class="btn btn-secondary btn-sm" title="View blueprints">
+                                    <i class="fas fa-map"></i>
+                                </a>
+                                @if (!loc.IsDefault)
+                                {
+                                    <form asp-controller="Locations" asp-action="Delete" asp-route-id="@loc.Id"
+                                          method="post" onsubmit="return confirm('Delete @loc.Name?')">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                }
+                            </div>
                         </td>
                     </tr>
                 }
@@ -86,7 +92,7 @@
                 <div class="form-group">
                     <label class="form-label">Type *</label>
                     <select name="LocationType" class="form-control">
-                        @foreach (var t in Enum.GetValues<Core.Enums.LocationType>())
+                        @foreach (var t in Enum.GetValues<LocationType>())
                         { <option value="@t">@t</option> }
                     </select>
                 </div>

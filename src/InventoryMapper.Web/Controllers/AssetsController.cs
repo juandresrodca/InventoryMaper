@@ -39,10 +39,10 @@ public class AssetsController(IAssetService assetService, IRepository<Core.Entit
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(CreateAssetDto model)
+    public async Task<IActionResult> Create([Bind(Prefix = "")] CreateAssetDto dto)
     {
-        if (!ModelState.IsValid) { await PopulateViewBag(); return View(model); }
-        var asset = await assetService.CreateAssetAsync(model);
+        if (!ModelState.IsValid) { await PopulateViewBag(); return View(dto); }
+        var asset = await assetService.CreateAssetAsync(dto);
         TempData["Success"] = $"Asset '{asset.Hostname}' created successfully.";
         return RedirectToAction(nameof(Details), new { id = asset.Id });
     }
@@ -70,11 +70,11 @@ public class AssetsController(IAssetService assetService, IRepository<Core.Entit
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit(Guid id, UpdateAssetDto model)
+    public async Task<IActionResult> Edit(Guid id, [Bind(Prefix = "")] UpdateAssetDto dto)
     {
-        if (!ModelState.IsValid) { await PopulateViewBag(); ViewBag.AssetId = id; return View(model); }
-        await assetService.UpdateAssetAsync(id, model);
-        TempData["Success"] = $"Asset '{model.Hostname}' updated successfully.";
+        if (!ModelState.IsValid) { await PopulateViewBag(); ViewBag.AssetId = id; return View(dto); }
+        await assetService.UpdateAssetAsync(id, dto);
+        TempData["Success"] = $"Asset '{dto.Hostname}' updated successfully.";
         return RedirectToAction(nameof(Details), new { id });
     }
 
