@@ -107,20 +107,86 @@ public class ImportService(ApplicationDbContext db, ILogger<ImportService> logge
     {
         var rows = new List<Dictionary<string, string>>();
         using var reader = new StreamReader(stream);
-        var headerLine = reader.ReadLine();
-        if (headerLine == null) return rows;
-        var headers = headerLine.Split(',').Select(h => h.Trim('"', ' ')).ToArray();
+        var records = ParseCsvRecords(reader);
 
-        string? line;
-        while ((line = reader.ReadLine()) != null)
+        string[]? headers = null;
+        foreach (var values in records)
         {
-            var values = line.Split(',').Select(v => v.Trim('"', ' ')).ToArray();
+            if (headers == null)
+            {
+                headers = values.Select(h => h.Trim()).ToArray();
+                continue;
+            }
+
+            if (values.All(string.IsNullOrWhiteSpace)) continue;
+
             var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < headers.Length && i < values.Length; i++)
-                dict[headers[i]] = values[i];
+            for (int i = 0; i < headers.Length && i < values.Count; i++)
+                dict[headers[i]] = values[i].Trim();
             rows.Add(dict);
         }
         return rows;
+    }
+
+    // Minimal RFC 4180 reader: quoted fields may contain commas, escaped quotes ("")
+    // and line breaks.
+    private static IEnumerable<List<string>> ParseCsvRecords(TextReader reader)
+    {
+        var field = new System.Text.StringBuilder();
+        var record = new List<string>();
+        var inQuotes = false;
+        var recordHasContent = false;
+        int c;
+
+        while ((c = reader.Read()) != -1)
+        {
+            var ch = (char)c;
+
+            if (inQuotes)
+            {
+                if (ch == '"')
+                {
+                    if (reader.Peek() == '"') { field.Append('"'); reader.Read(); }
+                    else inQuotes = false;
+                }
+                else field.Append(ch);
+                continue;
+            }
+
+            switch (ch)
+            {
+                case '"':
+                    inQuotes = true;
+                    recordHasContent = true;
+                    break;
+                case ',':
+                    record.Add(field.ToString());
+                    field.Clear();
+                    recordHasContent = true;
+                    break;
+                case '\r':
+                    break;
+                case '\n':
+                    if (recordHasContent || field.Length > 0)
+                    {
+                        record.Add(field.ToString());
+                        yield return record;
+                        record = [];
+                        field.Clear();
+                        recordHasContent = false;
+                    }
+                    break;
+                default:
+                    field.Append(ch);
+                    break;
+            }
+        }
+
+        if (recordHasContent || field.Length > 0)
+        {
+            record.Add(field.ToString());
+            yield return record;
+        }
     }
 
     private static Asset CreateFromRow(Dictionary<string, string> row, string? assetTypeStr)
