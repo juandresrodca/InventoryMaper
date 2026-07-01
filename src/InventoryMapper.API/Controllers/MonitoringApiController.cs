@@ -7,7 +7,15 @@ namespace InventoryMapper.API.Controllers;
 
 [ApiController]
 [Route("api/v1/monitoring")]
+<<<<<<< HEAD
 public class MonitoringApiController(IMonitoringService monitoring, ISweepQueue sweepQueue) : ControllerBase
+=======
+public class MonitoringApiController(
+    IMonitoringService monitoring,
+    IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime lifetime,
+    ILogger<MonitoringApiController> logger) : ControllerBase
+>>>>>>> ef0db94cbb07f234e070e8d6d6707728eb3951b6
 {
     // Agents are not Identity users — this endpoint authenticates itself via the AgentKey/HandshakeToken
     // pair in the body (see MonitoringService.ProcessAgentHeartbeatAsync) rather than [Authorize].
@@ -43,10 +51,32 @@ public class MonitoringApiController(IMonitoringService monitoring, ISweepQueue 
     public async Task<IActionResult> GetHistory(Guid assetId, [FromQuery] int count = 50, CancellationToken ct = default)
         => Ok(await monitoring.GetRecentHistoryAsync(assetId, count, ct));
 
+<<<<<<< HEAD
     [HttpPost("sweep"), Authorize]
     public IActionResult TriggerSweep()
     {
         sweepQueue.QueueSweep();
         return Accepted(new { message = "Ping sweep queued" });
+=======
+    [HttpPost("sweep")]
+    public IActionResult TriggerSweep()
+    {
+        // Run on a fresh scope: the request-scoped service (and its DbContext) is
+        // disposed as soon as this response returns, and the request token is cancelled.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var sweepService = scope.ServiceProvider.GetRequiredService<IMonitoringService>();
+                await sweepService.RunPingSweepAsync(lifetime.ApplicationStopping);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Background ping sweep failed");
+            }
+        });
+        return Accepted(new { message = "Ping sweep started" });
+>>>>>>> ef0db94cbb07f234e070e8d6d6707728eb3951b6
     }
 }

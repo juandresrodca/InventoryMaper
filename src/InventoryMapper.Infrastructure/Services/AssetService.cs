@@ -179,10 +179,11 @@ public class AssetService(ApplicationDbContext db, ILogger<AssetService> logger)
             .Select(g => new AssetTypeCountDto(g.Key.ToString(), g.Count(), GetTypeColor(g.Key)))
             .ToList();
 
+        var since = DateTime.UtcNow.AddHours(-24);
         var history = await db.MonitoringRecords
-            .Where(m => m.CheckedAt >= DateTime.UtcNow.AddHours(-24))
-            .GroupBy(m => m.CheckedAt.Hour)
-            .Select(g => new { Hour = g.Key, Online = g.Count(x => x.State == OnlineState.Online), Offline = g.Count(x => x.State == OnlineState.Offline) })
+            .Where(m => m.CheckedAt >= since)
+            .GroupBy(m => new { m.CheckedAt.Date, m.CheckedAt.Hour })
+            .Select(g => new { g.Key.Date, g.Key.Hour, Online = g.Count(x => x.State == OnlineState.Online), Offline = g.Count(x => x.State == OnlineState.Offline) })
             .ToListAsync(ct);
 
         return new DashboardStatsDto
@@ -202,7 +203,10 @@ public class AssetService(ApplicationDbContext db, ILogger<AssetService> logger)
             AssetsByType = byType,
             RecentCheckIns = recentCheckIns.Select(a => new RecentCheckInDto(a.Hostname, a.LastCheckIn!.Value, a.OnlineState.ToString(), a.AssetType.ToString())).ToList(),
             RecentAlerts = recentAlerts.Select(a => new AlertSummaryDto(a.Title, a.Severity.ToString(), a.CreatedAt, a.Asset?.Hostname)).ToList(),
-            OnlineHistory = history.Select(h => new OnlineHistoryPointDto(DateTime.UtcNow.Date.AddHours(h.Hour), h.Online, h.Offline)).ToList()
+            OnlineHistory = history
+                .OrderBy(h => h.Date).ThenBy(h => h.Hour)
+                .Select(h => new OnlineHistoryPointDto(h.Date.AddHours(h.Hour), h.Online, h.Offline))
+                .ToList()
         };
     }
 
