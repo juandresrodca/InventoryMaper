@@ -4,6 +4,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddWindowsService(o => o.ServiceName = "InventoryMapper Agent");
 
 var config = builder.Configuration.GetSection("Agent").Get<AgentConfig>() ?? new AgentConfig();
+config.AgentKey = AgentKeyStore.Resolve(config.AgentKey);
 builder.Services.AddSingleton(config);
 builder.Services.AddHttpClient<Worker>(client =>
 {

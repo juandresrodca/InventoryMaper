@@ -5,7 +5,11 @@ namespace InventoryMapper.API.Controllers;
 
 [ApiController]
 [Route("api/v1/monitoring")]
-public class MonitoringApiController(IMonitoringService monitoring) : ControllerBase
+public class MonitoringApiController(
+    IMonitoringService monitoring,
+    IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime lifetime,
+    ILogger<MonitoringApiController> logger) : ControllerBase
 {
     [HttpPost("heartbeat")]
     public async Task<IActionResult> Heartbeat([FromBody] AgentHeartbeatDto dto, CancellationToken ct)
@@ -30,9 +34,23 @@ public class MonitoringApiController(IMonitoringService monitoring) : Controller
         => Ok(await monitoring.GetRecentHistoryAsync(assetId, count, ct));
 
     [HttpPost("sweep")]
-    public async Task<IActionResult> TriggerSweep(CancellationToken ct)
+    public IActionResult TriggerSweep()
     {
-        _ = Task.Run(() => monitoring.RunPingSweepAsync(ct), ct);
+        // Run on a fresh scope: the request-scoped service (and its DbContext) is
+        // disposed as soon as this response returns, and the request token is cancelled.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var sweepService = scope.ServiceProvider.GetRequiredService<IMonitoringService>();
+                await sweepService.RunPingSweepAsync(lifetime.ApplicationStopping);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Background ping sweep failed");
+            }
+        });
         return Accepted(new { message = "Ping sweep started" });
     }
 }

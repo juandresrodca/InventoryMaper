@@ -139,6 +139,7 @@ public class MonitoringService(ApplicationDbContext db, ILogger<MonitoringServic
 
         if (asset != null)
         {
+            var expectedOu = asset.OrganizationalUnit;
             asset.OnlineState = OnlineState.Online;
             asset.LastCheckIn = DateTime.UtcNow;
             asset.IpAddress = dto.IpAddress;
@@ -158,14 +159,14 @@ public class MonitoringService(ApplicationDbContext db, ILogger<MonitoringServic
                 Details = $"Agent v{dto.AgentVersion}"
             });
 
-            if (!registration.IsHandshakeValid && asset.OrganizationalUnit != dto.OrganizationalUnit)
+            if (!registration.IsHandshakeValid && !string.IsNullOrEmpty(expectedOu) && expectedOu != dto.OrganizationalUnit)
             {
                 db.Alerts.Add(new AlertNotification
                 {
                     AlertType = AlertType.OUMismatch,
                     Severity = AlertSeverity.Warning,
                     Title = "OU Mismatch Detected",
-                    Message = $"{dto.Hostname}: expected OU '{asset.OrganizationalUnit}' but got '{dto.OrganizationalUnit}'",
+                    Message = $"{dto.Hostname}: expected OU '{expectedOu}' but got '{dto.OrganizationalUnit}'",
                     AssetId = asset.Id
                 });
             }
