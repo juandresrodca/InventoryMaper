@@ -57,43 +57,66 @@ public class Worker(ILogger<Worker> logger, AgentConfig config, HttpClient http)
         if (response.IsSuccessStatusCode)
         {
             var responseBody = await response.Content.ReadAsStringAsync(ct);
-            try 
+            try
             {
                 using var doc = JsonDocument.Parse(responseBody);
+
+                // On enrollment, the server issues a fresh per-agent secret that replaces the
+                // one-time enrollment token — persist it so the next heartbeat authenticates with it.
+                if (doc.RootElement.TryGetProperty("agentSecret", out var secretProp) && secretProp.ValueKind == JsonValueKind.String)
+                {
+                    var newSecret = secretProp.GetString();
+                    if (!string.IsNullOrEmpty(newSecret))
+                        StoreHandshakeToken(newSecret);
+                }
+
                 if (doc.RootElement.TryGetProperty("updateRequired", out var updateProp) && updateProp.GetBoolean())
                 {
                     var newVersion = doc.RootElement.GetProperty("targetVersion").GetString();
                     var downloadUrl = doc.RootElement.GetProperty("updateUrl").GetString();
-                    
-                    logger.LogWarning("UPDATE DETECTED: Upgrading from {Current} to {New}", 
+
+                    logger.LogWarning("UPDATE DETECTED: Upgrading from {Current} to {New}",
                         config.AgentVersion, newVersion);
-                    
+
                     await InitiateUpdateAsync(downloadUrl, ct);
                 }
             }
             catch { /* No update info in response */ }
-            
+
             logger.LogDebug("Heartbeat sent successfully at {Time}", DateTime.UtcNow);
         }
         else
             logger.LogWarning("Heartbeat returned {StatusCode}", response.StatusCode);
     }
 
-    private async Task InitiateUpdateAsync(string? url, CancellationToken ct)
+    // Server-supplied updateUrl is untrusted input (see 0.3 in the security review): until update
+    // binaries are Authenticode-signed against a pinned publisher cert, the host is allowlisted, and
+    // delivery is verified via an out-of-band signed hash, this stays a no-op. Do not implement a
+    // download-and-execute path here without all three controls in place — the agent runs as
+    // LocalSystem, so a spoofed response would be a remote-code-execution vector on every managed machine.
+    private Task InitiateUpdateAsync(string? url, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(url)) return;
-        
-        logger.LogInformation("Downloading update from {Url}...", url);
-        // Implementation would download the file and execute a silent installer
-        // that kills this process and replaces the binaries.
+        if (string.IsNullOrEmpty(url)) return Task.CompletedTask;
+
+        logger.LogWarning("Update to a new version was advertised by the server but auto-update is disabled " +
+            "pending signature verification and host allowlisting. Update manually. (Advertised URL: {Url})", url);
+        return Task.CompletedTask;
     }
 
     private string GetHandshakeToken()
     {
-        // In production: load from secure storage/registry
+        // First run: this holds the admin-issued, one-time enrollment token. After a successful
+        // enrollment heartbeat, StoreHandshakeToken overwrites it with the persistent per-agent secret.
         var stored = Microsoft.Win32.Registry.GetValue(
             @"HKEY_LOCAL_MACHINE\SOFTWARE\InventoryMapper\Agent",
             "HandshakeToken", null) as string;
         return stored ?? string.Empty;
+    }
+
+    private void StoreHandshakeToken(string token)
+    {
+        Microsoft.Win32.Registry.SetValue(
+            @"HKEY_LOCAL_MACHINE\SOFTWARE\InventoryMapper\Agent",
+            "HandshakeToken", token);
     }
 }

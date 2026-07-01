@@ -1,5 +1,7 @@
 using InventoryMapper.Core.Entities;
 using InventoryMapper.Core.Enums;
+using InventoryMapper.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -7,6 +9,34 @@ namespace InventoryMapper.Infrastructure.Data;
 
 public static class DbSeeder
 {
+    public const string AdminRole = "Admin";
+    public const string ViewerRole = "Viewer";
+
+    public static async Task SeedIdentityAsync(
+        RoleManager<IdentityRole> roleManager, UserManager<ApplicationUser> userManager,
+        string adminEmail, string adminPassword, ILogger logger)
+    {
+        foreach (var role in new[] { AdminRole, ViewerRole })
+        {
+            if (!await roleManager.RoleExistsAsync(role))
+                await roleManager.CreateAsync(new IdentityRole(role));
+        }
+
+        if (await userManager.FindByEmailAsync(adminEmail) != null) return;
+
+        var admin = new ApplicationUser { UserName = adminEmail, Email = adminEmail, DisplayName = "Administrator", EmailConfirmed = true };
+        var result = await userManager.CreateAsync(admin, adminPassword);
+        if (result.Succeeded)
+        {
+            await userManager.AddToRoleAsync(admin, AdminRole);
+            logger.LogWarning("Seeded default admin account {Email}. Change its password immediately in a real deployment.", adminEmail);
+        }
+        else
+        {
+            logger.LogError("Failed to seed default admin account: {Errors}", string.Join("; ", result.Errors.Select(e => e.Description)));
+        }
+    }
+
     public static async Task SeedAsync(ApplicationDbContext db, ILogger logger)
     {
         await db.Database.MigrateAsync();

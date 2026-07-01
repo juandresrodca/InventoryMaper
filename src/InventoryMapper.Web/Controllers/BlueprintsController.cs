@@ -1,6 +1,7 @@
 using InventoryMapper.Core.DTOs;
 using InventoryMapper.Core.Entities;
 using InventoryMapper.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 
@@ -86,7 +87,7 @@ public class BlueprintsController(IBlueprintService blueprintService, IRepositor
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, ValidateAntiForgeryToken]
+    [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)
     {
         await blueprintService.DeleteBlueprintAsync(id);

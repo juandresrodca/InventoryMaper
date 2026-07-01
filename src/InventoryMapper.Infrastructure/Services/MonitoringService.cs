@@ -1,4 +1,5 @@
 using System.Net.NetworkInformation;
+using System.Security.Cryptography;
 using InventoryMapper.Core.Entities;
 using InventoryMapper.Core.Enums;
 using InventoryMapper.Core.Interfaces;
@@ -99,13 +100,29 @@ public class MonitoringService(ApplicationDbContext db, ILogger<MonitoringServic
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task ProcessAgentHeartbeatAsync(AgentHeartbeatDto dto, CancellationToken ct = default)
+    public async Task<HeartbeatResult> ProcessAgentHeartbeatAsync(AgentHeartbeatDto dto, CancellationToken ct = default)
     {
         var registration = await db.AgentRegistrations
             .FirstOrDefaultAsync(r => r.AgentKey == dto.AgentKey, ct);
 
+        string? newAgentSecret = null;
+
         if (registration == null)
         {
+            // Unknown agent: only accepted if it presents a live, unconsumed enrollment token.
+            var enrollment = await db.EnrollmentTokens.FirstOrDefaultAsync(
+                e => e.Token == dto.HandshakeToken && !e.IsConsumed && e.ExpiresAt > DateTime.UtcNow, ct);
+            if (enrollment == null)
+            {
+                logger.LogWarning("Rejected heartbeat from unknown agent {AgentKey}: no valid enrollment token.", dto.AgentKey);
+                return HeartbeatResult.Rejected("Unknown agent and no valid enrollment token.");
+            }
+
+            enrollment.IsConsumed = true;
+            enrollment.ConsumedAt = DateTime.UtcNow;
+            enrollment.ConsumedByAgentKey = dto.AgentKey;
+
+            newAgentSecret = GenerateSecret();
             registration = new AgentRegistration
             {
                 AgentKey = dto.AgentKey,
@@ -116,22 +133,38 @@ public class MonitoringService(ApplicationDbContext db, ILogger<MonitoringServic
                 AgentVersion = dto.AgentVersion,
                 OperatingSystem = dto.OperatingSystem,
                 OsVersion = dto.OsVersion,
-                LastHeartbeat = DateTime.UtcNow
+                LastHeartbeat = DateTime.UtcNow,
+                IsActive = true,
+                IsHandshakeValid = true,
+                HandshakeToken = newAgentSecret,
+                HandshakeExpiry = null
             };
             db.AgentRegistrations.Add(registration);
         }
         else
         {
+            if (!registration.IsActive)
+            {
+                logger.LogWarning("Rejected heartbeat from disabled agent {AgentKey}.", dto.AgentKey);
+                return HeartbeatResult.Rejected("Agent is disabled.");
+            }
+            if (registration.HandshakeExpiry is { } expiry && expiry < DateTime.UtcNow)
+            {
+                logger.LogWarning("Rejected heartbeat from agent {AgentKey}: secret expired, re-enrollment required.", dto.AgentKey);
+                return HeartbeatResult.Rejected("Agent secret expired; re-enrollment required.");
+            }
+            if (string.IsNullOrEmpty(dto.HandshakeToken) || registration.HandshakeToken != dto.HandshakeToken)
+            {
+                logger.LogWarning("Rejected heartbeat from agent {AgentKey}: invalid secret.", dto.AgentKey);
+                return HeartbeatResult.Rejected("Invalid agent secret.");
+            }
+
             registration.LastHeartbeat = DateTime.UtcNow;
             registration.IpAddress = dto.IpAddress;
             registration.OrganizationalUnit = dto.OrganizationalUnit;
             registration.AgentVersion = dto.AgentVersion;
+            registration.IsHandshakeValid = true;
         }
-
-        // Validate handshake token
-        registration.IsHandshakeValid = !string.IsNullOrEmpty(dto.HandshakeToken) &&
-            registration.HandshakeToken == dto.HandshakeToken &&
-            registration.HandshakeExpiry > DateTime.UtcNow;
 
         // Find or update linked asset
         var asset = await db.Assets
@@ -139,6 +172,8 @@ public class MonitoringService(ApplicationDbContext db, ILogger<MonitoringServic
 
         if (asset != null)
         {
+            var previousOu = asset.OrganizationalUnit;
+
             asset.OnlineState = OnlineState.Online;
             asset.LastCheckIn = DateTime.UtcNow;
             asset.IpAddress = dto.IpAddress;
@@ -158,21 +193,37 @@ public class MonitoringService(ApplicationDbContext db, ILogger<MonitoringServic
                 Details = $"Agent v{dto.AgentVersion}"
             });
 
-            if (!registration.IsHandshakeValid && asset.OrganizationalUnit != dto.OrganizationalUnit)
+            if (!string.IsNullOrEmpty(previousOu) && previousOu != dto.OrganizationalUnit)
             {
                 db.Alerts.Add(new AlertNotification
                 {
                     AlertType = AlertType.OUMismatch,
                     Severity = AlertSeverity.Warning,
                     Title = "OU Mismatch Detected",
-                    Message = $"{dto.Hostname}: expected OU '{asset.OrganizationalUnit}' but got '{dto.OrganizationalUnit}'",
+                    Message = $"{dto.Hostname}: expected OU '{previousOu}' but got '{dto.OrganizationalUnit}'",
                     AssetId = asset.Id
                 });
             }
         }
 
         await db.SaveChangesAsync(ct);
+        return HeartbeatResult.Accepted(newAgentSecret);
     }
+
+    public async Task<EnrollmentToken> GenerateEnrollmentTokenAsync(string createdBy, CancellationToken ct = default)
+    {
+        var token = new EnrollmentToken
+        {
+            Token = GenerateSecret(),
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
+            CreatedBy = createdBy
+        };
+        db.EnrollmentTokens.Add(token);
+        await db.SaveChangesAsync(ct);
+        return token;
+    }
+
+    private static string GenerateSecret() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 
     public async Task<IEnumerable<MonitoringRecord>> GetRecentHistoryAsync(Guid assetId, int count = 50, CancellationToken ct = default)
         => await db.MonitoringRecords

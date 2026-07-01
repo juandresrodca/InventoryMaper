@@ -1,4 +1,7 @@
+using System.Globalization;
 using ClosedXML.Excel;
+using CsvHelper;
+using CsvHelper.Configuration;
 using InventoryMapper.Core.Entities;
 using InventoryMapper.Core.Enums;
 using InventoryMapper.Core.Interfaces;
@@ -28,6 +31,14 @@ public class ImportService(ApplicationDbContext db, ILogger<ImportService> logge
 
         batch.TotalRows = rows.Count;
 
+        // Existing hostnames are looked up once up front so the per-row loop makes no DB round-trips;
+        // everything (new assets + import records) is saved once at the end, in one transaction, so a
+        // mid-file failure can't leave a half-imported file.
+        var existingByHostname = await db.Assets.IgnoreQueryFilters()
+            .ToDictionaryAsync(a => a.Hostname, a => a, StringComparer.OrdinalIgnoreCase, ct);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
         foreach (var (row, index) in rows.Select((r, i) => (r, i + 2)))
         {
             var record = new ImportRecord { ImportBatchId = batch.Id, RowNumber = index, RawData = string.Join("|", row.Values) };
@@ -44,15 +55,10 @@ public class ImportService(ApplicationDbContext db, ILogger<ImportService> logge
                     continue;
                 }
 
-                // Duplicate check
-                var existing = await db.Assets.IgnoreQueryFilters()
-                    .FirstOrDefaultAsync(a => a.Hostname == hostname, ct);
-
-                if (existing != null)
+                if (existingByHostname.TryGetValue(hostname, out var existing))
                 {
                     record.IsDuplicate = true;
                     record.AssetId = existing.Id;
-                    // Update existing
                     UpdateFromRow(existing, row, assetTypeStr);
                     batch.DuplicateRows++;
                 }
@@ -60,7 +66,7 @@ public class ImportService(ApplicationDbContext db, ILogger<ImportService> logge
                 {
                     var asset = CreateFromRow(row, assetTypeStr);
                     db.Assets.Add(asset);
-                    await db.SaveChangesAsync(ct);
+                    existingByHostname[hostname] = asset;
                     record.AssetId = asset.Id;
                     batch.SuccessRows++;
                 }
@@ -82,6 +88,7 @@ public class ImportService(ApplicationDbContext db, ILogger<ImportService> logge
         batch.Status = batch.ErrorRows == 0 ? ImportStatus.Completed : ImportStatus.CompletedWithErrors;
         batch.CompletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return batch;
     }
 
@@ -107,17 +114,16 @@ public class ImportService(ApplicationDbContext db, ILogger<ImportService> logge
     {
         var rows = new List<Dictionary<string, string>>();
         using var reader = new StreamReader(stream);
-        var headerLine = reader.ReadLine();
-        if (headerLine == null) return rows;
-        var headers = headerLine.Split(',').Select(h => h.Trim('"', ' ')).ToArray();
+        using var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture) { MissingFieldFound = null });
 
-        string? line;
-        while ((line = reader.ReadLine()) != null)
+        if (!csv.Read() || !csv.ReadHeader() || csv.HeaderRecord == null) return rows;
+        var headers = csv.HeaderRecord.Select(h => h.Trim()).ToArray();
+
+        while (csv.Read())
         {
-            var values = line.Split(',').Select(v => v.Trim('"', ' ')).ToArray();
             var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < headers.Length && i < values.Length; i++)
-                dict[headers[i]] = values[i];
+            foreach (var header in headers)
+                dict[header] = csv.GetField(header)?.Trim() ?? string.Empty;
             rows.Add(dict);
         }
         return rows;

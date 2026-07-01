@@ -1,4 +1,5 @@
 using InventoryMapper.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace InventoryMapper.Web.Controllers;
@@ -12,7 +13,7 @@ public class ImportController(IImportService importService) : Controller
         return View(history);
     }
 
-    [HttpPost, ValidateAntiForgeryToken]
+    [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> Upload(IFormFile file, string? assetType)
     {
         if (file == null || file.Length == 0)

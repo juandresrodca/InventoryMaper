@@ -1,0 +1,23 @@
+@{
+    ViewData["Title"] = "Access Denied";
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Access Denied — InventoryMapper</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center;">
+    <div class="card" style="width: 380px; text-align: center;">
+        <div class="card-body">
+            <h1 class="page-title" style="font-size: 18px;">Access Denied</h1>
+            <p>You don't have permission to view this page.</p>
+            <a asp-controller="Account" asp-action="Login" class="btn btn-secondary">Back to Sign In</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 using InventoryMapper.Core.DTOs;
 using InventoryMapper.Core.Enums;
 using InventoryMapper.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 
@@ -78,7 +79,7 @@ public class AssetsController(IAssetService assetService, IRepository<Core.Entit
         return RedirectToAction(nameof(Details), new { id });
     }
 
-    [HttpPost, ValidateAntiForgeryToken]
+    [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)
     {
         await assetService.DeleteAssetAsync(id);

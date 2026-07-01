@@ -1,11 +1,13 @@
 using InventoryMapper.Core.DTOs;
 using InventoryMapper.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace InventoryMapper.API.Controllers;
 
 [ApiController]
 [Route("api/v1/blueprints")]
+[Authorize]
 public class BlueprintsApiController(IBlueprintService blueprintService) : ControllerBase
 {
     [HttpGet]

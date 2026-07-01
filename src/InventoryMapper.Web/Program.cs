@@ -1,7 +1,11 @@
 using InventoryMapper.Infrastructure;
 using InventoryMapper.Infrastructure.Data;
+using InventoryMapper.Infrastructure.Identity;
 using InventoryMapper.Web.Hubs;
 using InventoryMapper.Web.Workers;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -16,11 +20,21 @@ try
     var builder = WebApplication.CreateBuilder(args);
     builder.Host.UseSerilog();
 
-    builder.Services.AddControllersWithViews();
+    builder.Services.AddControllersWithViews(options =>
+        options.Filters.Add(new AuthorizeFilter()));
     builder.Services.AddSignalR();
     // Set blueprint storage path for BlueprintService
     builder.Configuration["BlueprintStoragePath"] = Path.Combine(builder.Environment.WebRootPath, "blueprints");
     builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddIdentityServices();
+    builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme)
+        .AddCookie(IdentityConstants.ApplicationScheme, o =>
+        {
+            o.LoginPath = "/Account/Login";
+            o.AccessDeniedPath = "/Account/AccessDenied";
+            o.ExpireTimeSpan = TimeSpan.FromHours(8);
+            o.SlidingExpiration = true;
+        });
     builder.Services.AddHostedService<MonitoringWorker>();
 
     builder.Services.AddResponseCompression();
@@ -34,6 +48,12 @@ try
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         await DbSeeder.SeedAsync(db, logger);
+
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var adminEmail = builder.Configuration["Seed:AdminEmail"] ?? "admin@inventorymapper.local";
+        var adminPassword = builder.Configuration["Seed:AdminPassword"] ?? "ChangeMe123!";
+        await DbSeeder.SeedIdentityAsync(roleManager, userManager, adminEmail, adminPassword, logger);
     }
 
     if (!app.Environment.IsDevelopment())
@@ -46,6 +66,7 @@ try
     app.UseResponseCompression();
     app.UseStaticFiles();
     app.UseRouting();
+    app.UseAuthentication();
     app.UseAuthorization();
 
     app.MapHub<MonitoringHub>("/hubs/monitoring");

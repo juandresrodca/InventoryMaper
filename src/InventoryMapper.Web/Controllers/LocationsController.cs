@@ -1,6 +1,7 @@
 using InventoryMapper.Core.Entities;
 using InventoryMapper.Core.Enums;
 using InventoryMapper.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -44,7 +45,7 @@ public class LocationsController(IRepository<Location> locationRepo) : Controlle
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, ValidateAntiForgeryToken]
+    [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)
     {
         await locationRepo.DeleteAsync(id);

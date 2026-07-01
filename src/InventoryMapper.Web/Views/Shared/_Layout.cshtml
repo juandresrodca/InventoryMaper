@@ -80,6 +80,16 @@
         <div style="margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border-color); font-size: 11px; color: var(--text-muted);">
             InventoryMapper v1.0<br />
             <span style="color: var(--accent-green);">&#x25CF;</span> System Online
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <div style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>@User.Identity.Name</span>
+                    <form asp-controller="Account" asp-action="Logout" method="post" style="display: inline;">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-secondary btn-sm" style="padding: 2px 8px;">Sign out</button>
+                    </form>
+                </div>
+            }
         </div>
     </nav>
 

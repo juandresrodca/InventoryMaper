@@ -1,11 +1,13 @@
 using InventoryMapper.Core.DTOs;
 using InventoryMapper.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace InventoryMapper.API.Controllers;
 
 [ApiController]
 [Route("api/v1/assets")]
+[Authorize]
 public class AssetsApiController(IAssetService assetService) : ControllerBase
 {
     [HttpGet]
@@ -32,12 +34,8 @@ public class AssetsApiController(IAssetService assetService) : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateAssetDto dto, CancellationToken ct)
     {
-        try
-        {
-            var asset = await assetService.UpdateAssetAsync(id, dto, ct);
-            return Ok(asset);
-        }
-        catch (KeyNotFoundException) { return NotFound(); }
+        var asset = await assetService.UpdateAssetAsync(id, dto, ct);
+        return Ok(asset);
     }
 
     [HttpDelete("{id:guid}")]
